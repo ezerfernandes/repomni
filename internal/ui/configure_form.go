@@ -9,6 +9,21 @@ import (
 	"github.com/ezer/repoinjector/internal/config"
 )
 
+type itemDef struct {
+	label      string
+	key        string // stable key for selection (matches target_path)
+	sourcePath string
+	targetPath string
+	itemType   config.ItemType
+}
+
+var defaultItemDefs = []itemDef{
+	{label: "skills/ (directory)", key: ".claude/skills", sourcePath: "skills", targetPath: ".claude/skills", itemType: config.ItemTypeDirectory},
+	{label: "hooks.json (file)", key: ".claude/hooks.json", sourcePath: "hooks.json", targetPath: ".claude/hooks.json", itemType: config.ItemTypeFile},
+	{label: ".envrc (file)", key: ".envrc", sourcePath: ".envrc", targetPath: ".envrc", itemType: config.ItemTypeFile},
+	{label: ".env (file)", key: ".env", sourcePath: ".env", targetPath: ".env", itemType: config.ItemTypeFile},
+}
+
 func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
 	var sourceDir string
 	if cfg.SourceDir != "" {
@@ -22,37 +37,31 @@ func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
 		mode = string(config.ModeSymlink)
 	}
 
-	// Build item options from defaults
-	allItems := config.DefaultItems()
+	// Build source path overrides from existing config, falling back to defaults
+	existingSourcePaths := make(map[string]string)
 	enabledSet := make(map[string]bool)
 	for _, item := range cfg.Items {
+		existingSourcePaths[item.TargetPath] = item.SourcePath
 		if item.Enabled {
-			enabledSet[item.SourcePath] = true
+			enabledSet[item.TargetPath] = true
 		}
 	}
 
-	type itemOption struct {
-		label      string
-		sourcePath string
-	}
-	options := []itemOption{
-		{label: ".claude/skills/ (directory)", sourcePath: ".claude/skills"},
-		{label: ".claude/hooks.json (file)", sourcePath: ".claude/hooks.json"},
-		{label: ".envrc (file)", sourcePath: ".envrc"},
-		{label: ".env (file)", sourcePath: ".env"},
-	}
+	skillsSource := getSourcePath(existingSourcePaths, ".claude/skills", "skills")
+	hooksSource := getSourcePath(existingSourcePaths, ".claude/hooks.json", "hooks.json")
+	envrcSource := getSourcePath(existingSourcePaths, ".envrc", ".envrc")
+	envSource := getSourcePath(existingSourcePaths, ".env", ".env")
 
 	var selectedItems []string
-	// Pre-select currently enabled items
-	for _, opt := range options {
-		if enabledSet[opt.sourcePath] || len(cfg.Items) == 0 {
-			selectedItems = append(selectedItems, opt.sourcePath)
+	for _, def := range defaultItemDefs {
+		if enabledSet[def.key] || len(cfg.Items) == 0 {
+			selectedItems = append(selectedItems, def.key)
 		}
 	}
 
 	var selectOptions []huh.Option[string]
-	for _, opt := range options {
-		selectOptions = append(selectOptions, huh.NewOption(opt.label, opt.sourcePath))
+	for _, def := range defaultItemDefs {
+		selectOptions = append(selectOptions, huh.NewOption(def.label, def.key))
 	}
 
 	var confirm bool
@@ -61,7 +70,7 @@ func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Source directory").
-				Description("Path to the repo containing files to inject").
+				Description("Path to the directory containing files to inject").
 				Value(&sourceDir).
 				Validate(func(s string) error {
 					if s == "" {
@@ -99,6 +108,27 @@ func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
 				Value(&selectedItems),
 		),
 		huh.NewGroup(
+			huh.NewNote().
+				Title("Source path overrides").
+				Description("Customize where each item is read from in the source directory.\nLeave defaults to use the standard paths."),
+			huh.NewInput().
+				Title("Skills directory").
+				Description("Source path for .claude/skills/ (default: skills)").
+				Value(&skillsSource),
+			huh.NewInput().
+				Title("Hooks file").
+				Description("Source path for .claude/hooks.json (default: hooks.json)").
+				Value(&hooksSource),
+			huh.NewInput().
+				Title("Envrc file").
+				Description("Source path for .envrc (default: .envrc)").
+				Value(&envrcSource),
+			huh.NewInput().
+				Title("Env file").
+				Description("Source path for .env (default: .env)").
+				Value(&envSource),
+		),
+		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Save this configuration?").
 				Value(&confirm),
@@ -113,25 +143,35 @@ func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
 		return nil, fmt.Errorf("cancelled by user")
 	}
 
-	// Resolve source dir to absolute
 	absSource, err := filepath.Abs(sourceDir)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build enabled set from selection
 	selectedSet := make(map[string]bool)
 	for _, s := range selectedItems {
 		selectedSet[s] = true
 	}
 
+	// Map overridden source paths by target path key
+	sourceOverrides := map[string]string{
+		".claude/skills":     skillsSource,
+		".claude/hooks.json": hooksSource,
+		".envrc":             envrcSource,
+		".env":               envSource,
+	}
+
 	var items []config.Item
-	for _, def := range allItems {
+	for _, def := range defaultItemDefs {
+		sp := sourceOverrides[def.key]
+		if sp == "" {
+			sp = def.sourcePath
+		}
 		items = append(items, config.Item{
-			Type:       def.Type,
-			SourcePath: def.SourcePath,
-			TargetPath: def.TargetPath,
-			Enabled:    selectedSet[def.SourcePath],
+			Type:       def.itemType,
+			SourcePath: sp,
+			TargetPath: def.targetPath,
+			Enabled:    selectedSet[def.key],
 		})
 	}
 
@@ -141,4 +181,11 @@ func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
 		Mode:      config.InjectionMode(mode),
 		Items:     items,
 	}, nil
+}
+
+func getSourcePath(existing map[string]string, targetPath, defaultSource string) string {
+	if sp, ok := existing[targetPath]; ok && sp != "" {
+		return sp
+	}
+	return defaultSource
 }

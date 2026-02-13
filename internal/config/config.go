@@ -38,8 +38,8 @@ type Config struct {
 
 func DefaultItems() []Item {
 	return []Item{
-		{Type: ItemTypeDirectory, SourcePath: ".claude/skills", TargetPath: ".claude/skills", Enabled: true},
-		{Type: ItemTypeFile, SourcePath: ".claude/hooks.json", TargetPath: ".claude/hooks.json", Enabled: true},
+		{Type: ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		{Type: ItemTypeFile, SourcePath: "hooks.json", TargetPath: ".claude/hooks.json", Enabled: true},
 		{Type: ItemTypeFile, SourcePath: ".envrc", TargetPath: ".envrc", Enabled: true},
 		{Type: ItemTypeFile, SourcePath: ".env", TargetPath: ".env", Enabled: true},
 	}

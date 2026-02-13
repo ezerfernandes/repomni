@@ -21,10 +21,10 @@ func setupTestEnv(t *testing.T) (sourceDir, targetDir string, cfg *config.Config
 		t.Fatalf("git init failed: %v", err)
 	}
 
-	// Create source files
-	os.MkdirAll(filepath.Join(sourceDir, ".claude", "skills"), 0755)
-	os.WriteFile(filepath.Join(sourceDir, ".claude", "skills", "test.md"), []byte("skill"), 0644)
-	os.WriteFile(filepath.Join(sourceDir, ".claude", "hooks.json"), []byte(`{"hooks":[]}`), 0644)
+	// Create source files (defaults: skills/, hooks.json at source root)
+	os.MkdirAll(filepath.Join(sourceDir, "skills"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "test.md"), []byte("skill"), 0644)
+	os.WriteFile(filepath.Join(sourceDir, "hooks.json"), []byte(`{"hooks":[]}`), 0644)
 	os.WriteFile(filepath.Join(sourceDir, ".envrc"), []byte("export FOO=bar"), 0644)
 	os.WriteFile(filepath.Join(sourceDir, ".env"), []byte("SECRET=123"), 0644)
 
@@ -67,7 +67,7 @@ func TestInjectSymlink(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot read skills symlink: %v", err)
 	}
-	expected = filepath.Join(sourceDir, ".claude", "skills")
+	expected = filepath.Join(sourceDir, "skills")
 	if link != expected {
 		t.Errorf("expected symlink to %q, got %q", expected, link)
 	}
