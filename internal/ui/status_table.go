@@ -9,6 +9,8 @@ import (
 func PrintResults(results []injector.Result) {
 	created, skipped, errors := 0, 0, 0
 
+	warnings := 0
+
 	for _, r := range results {
 		icon := actionIcon(r.Action)
 		fmt.Printf("  %s %s — %s\n", icon, r.Item.TargetPath, r.Detail)
@@ -18,12 +20,19 @@ func PrintResults(results []injector.Result) {
 			created++
 		case "skipped", "dry-run":
 			skipped++
+		case "warning":
+			warnings++
 		case "error":
 			errors++
 		}
 	}
 
-	fmt.Printf("\nDone. %d changed, %d skipped, %d errors.\n", created, skipped, errors)
+	summary := fmt.Sprintf("\nDone. %d changed, %d skipped", created, skipped)
+	if warnings > 0 {
+		summary += fmt.Sprintf(", %d warnings", warnings)
+	}
+	summary += fmt.Sprintf(", %d errors.\n", errors)
+	fmt.Print(summary)
 }
 
 func PrintStatusTable(repoPath string, statuses []injector.ItemStatus) {
@@ -51,6 +60,8 @@ func actionIcon(action string) string {
 		return "[ok]"
 	case "skipped", "dry-run":
 		return "[--]"
+	case "warning":
+		return "[!!]"
 	case "error":
 		return "[!!]"
 	default:

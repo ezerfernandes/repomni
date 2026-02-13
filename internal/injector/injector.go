@@ -67,6 +67,14 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 			continue
 		}
 
+		// Directory items get per-entry merging
+		if srcInfo.IsDir() {
+			dirResults, dirExcludes := injectDirMerged(item, src, dst, mode, opts)
+			results = append(results, dirResults...)
+			excludePaths = append(excludePaths, dirExcludes...)
+			continue
+		}
+
 		if opts.DryRun {
 			action := "symlink"
 			if mode == config.ModeCopy {
@@ -85,17 +93,9 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 
 		var result Result
 		if mode == config.ModeSymlink {
-			if srcInfo.IsDir() {
-				result = symlinkDir(item, src, dst, opts.Force)
-			} else {
-				result = symlinkFile(item, src, dst, opts.Force)
-			}
+			result = createSymlink(item, src, dst, opts.Force)
 		} else {
-			if srcInfo.IsDir() {
-				result = copyDir(item, src, dst, opts.Force)
-			} else {
-				result = copyFile(item, src, dst, opts.Force)
-			}
+			result = copyFile(item, src, dst, opts.Force)
 		}
 
 		results = append(results, result)
@@ -123,10 +123,24 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 		return nil, err
 	}
 
+	sourceDir, err := filepath.Abs(cfg.SourceDir)
+	if err != nil {
+		return nil, fmt.Errorf("cannot resolve source path: %w", err)
+	}
+
 	var results []Result
 
 	for _, item := range cfg.EnabledItems() {
 		dst := filepath.Join(targetDir, item.TargetPath)
+
+		// Directory items get per-entry ejection
+		if item.Type == config.ItemTypeDirectory {
+			dirResults := ejectDir(item, sourceDir, targetDir)
+			results = append(results, dirResults...)
+			// Clean up the directory itself if now empty
+			removeIfEmptyDir(dst)
+			continue
+		}
 
 		info, err := os.Lstat(dst)
 		if err != nil {
@@ -139,14 +153,6 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
 			} else {
 				results = append(results, Result{Item: item, Action: "removed", Detail: "symlink removed"})
-			}
-		} else if info.IsDir() {
-			// Only remove if it's a symlinked dir (already handled above via Lstat)
-			// For copied directories, remove them
-			if err := os.RemoveAll(dst); err != nil {
-				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove directory: %v", err)})
-			} else {
-				results = append(results, Result{Item: item, Action: "removed", Detail: "directory removed"})
 			}
 		} else {
 			if err := os.Remove(dst); err != nil {
@@ -209,6 +215,13 @@ func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 		src := filepath.Join(sourceDir, item.SourcePath)
 		dst := filepath.Join(targetDir, item.TargetPath)
 
+		// Directory items get per-entry status
+		if item.Type == config.ItemTypeDirectory {
+			dirStatuses := statusDir(item, src, dst, excludeSet)
+			statuses = append(statuses, dirStatuses...)
+			continue
+		}
+
 		status := ItemStatus{
 			Item:     item,
 			Excluded: excludeSet[item.TargetPath],
@@ -243,12 +256,279 @@ func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 	return statuses, nil
 }
 
-func symlinkFile(item config.Item, src, dst string, force bool) Result {
-	return createSymlink(item, src, dst, force)
+// injectDirMerged creates per-entry symlinks or copies inside the target directory,
+// merging with any existing content. Entries that already exist in the target
+// with the same name are skipped with a warning.
+func injectDirMerged(item config.Item, src, dst string, mode config.InjectionMode, opts Options) ([]Result, []string) {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot read source directory: %v", err)}}, nil
+	}
+
+	if len(entries) == 0 {
+		return []Result{{Item: item, Action: "skipped", Detail: "source directory is empty"}}, nil
+	}
+
+	var results []Result
+	var excludes []string
+
+	for _, entry := range entries {
+		entryName := entry.Name()
+		entrySrc := filepath.Join(src, entryName)
+		entryDst := filepath.Join(dst, entryName)
+		entryExclude := filepath.Join(item.TargetPath, entryName)
+
+		subItem := config.Item{
+			Type:       item.Type,
+			SourcePath: filepath.Join(item.SourcePath, entryName),
+			TargetPath: filepath.Join(item.TargetPath, entryName),
+			Enabled:    true,
+		}
+
+		if opts.DryRun {
+			action := "symlink"
+			if mode == config.ModeCopy {
+				action = "copy"
+			}
+			results = append(results, Result{Item: subItem, Action: "dry-run", Detail: fmt.Sprintf("would %s %s -> %s", action, entrySrc, entryDst)})
+			excludes = append(excludes, entryExclude)
+			continue
+		}
+
+		// Ensure target directory exists (as a real directory, not a symlink)
+		if err := os.MkdirAll(dst, 0755); err != nil {
+			results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot create directory %s: %v", dst, err)})
+			continue
+		}
+
+		// Check if something already exists at the destination
+		info, lstatErr := os.Lstat(entryDst)
+		if lstatErr == nil {
+			if info.Mode()&os.ModeSymlink != 0 {
+				// It's a symlink — check if it points to our source
+				target, _ := os.Readlink(entryDst)
+				if target == entrySrc {
+					results = append(results, Result{Item: subItem, Action: "skipped", Detail: "already up to date"})
+					excludes = append(excludes, entryExclude)
+					continue
+				}
+			}
+			// Something else exists with the same name — warn and skip
+			results = append(results, Result{Item: subItem, Action: "warning", Detail: fmt.Sprintf("%s already exists in repo, skipping", entryName)})
+			continue
+		}
+
+		if mode == config.ModeSymlink {
+			if err := os.Symlink(entrySrc, entryDst); err != nil {
+				results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot create symlink: %v", err)})
+				continue
+			}
+			results = append(results, Result{Item: subItem, Action: "created", Detail: fmt.Sprintf("symlinked -> %s", entrySrc)})
+		} else {
+			if entry.IsDir() {
+				if err := copyDirRecursive(entrySrc, entryDst); err != nil {
+					results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot copy directory: %v", err)})
+					continue
+				}
+			} else {
+				if err := copyFileContent(entrySrc, entryDst); err != nil {
+					results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot copy: %v", err)})
+					continue
+				}
+			}
+			results = append(results, Result{Item: subItem, Action: "created", Detail: "copied"})
+		}
+		excludes = append(excludes, entryExclude)
+	}
+
+	return results, excludes
 }
 
-func symlinkDir(item config.Item, src, dst string, force bool) Result {
-	return createSymlink(item, src, dst, force)
+// ejectDir removes injected entries from a directory item. If the target path
+// is itself a symlink (old-style injection), it removes the whole symlink.
+// Otherwise it removes individual entries that match the source directory contents.
+func ejectDir(item config.Item, sourceDir, targetDir string) []Result {
+	src := filepath.Join(sourceDir, item.SourcePath)
+	dst := filepath.Join(targetDir, item.TargetPath)
+
+	// Check if target exists at all
+	info, err := os.Lstat(dst)
+	if err != nil {
+		return []Result{{Item: item, Action: "skipped", Detail: "not present"}}
+	}
+
+	// Old-style: whole directory is a symlink — remove it
+	if info.Mode()&os.ModeSymlink != 0 {
+		if err := os.Remove(dst); err != nil {
+			return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)}}
+		}
+		return []Result{{Item: item, Action: "removed", Detail: "directory symlink removed"}}
+	}
+
+	// New-style: directory with individual entries
+	// Read source to know what entries we injected
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		// Source unavailable — fall back to removing symlinks that point into source
+		return ejectDirBySymlinks(item, src, dst)
+	}
+
+	var results []Result
+	for _, entry := range entries {
+		entryName := entry.Name()
+		entryDst := filepath.Join(dst, entryName)
+		entrySrc := filepath.Join(src, entryName)
+
+		subItem := config.Item{
+			Type:       item.Type,
+			SourcePath: filepath.Join(item.SourcePath, entryName),
+			TargetPath: filepath.Join(item.TargetPath, entryName),
+			Enabled:    true,
+		}
+
+		entryInfo, err := os.Lstat(entryDst)
+		if err != nil {
+			results = append(results, Result{Item: subItem, Action: "skipped", Detail: "not present"})
+			continue
+		}
+
+		if entryInfo.Mode()&os.ModeSymlink != 0 {
+			// Only remove if it points to our source
+			target, _ := os.Readlink(entryDst)
+			if target == entrySrc {
+				if err := os.Remove(entryDst); err != nil {
+					results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
+				} else {
+					results = append(results, Result{Item: subItem, Action: "removed", Detail: "symlink removed"})
+				}
+			} else {
+				results = append(results, Result{Item: subItem, Action: "skipped", Detail: "symlink points elsewhere, not ours"})
+			}
+		} else if entryInfo.IsDir() {
+			if err := os.RemoveAll(entryDst); err != nil {
+				results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove directory: %v", err)})
+			} else {
+				results = append(results, Result{Item: subItem, Action: "removed", Detail: "directory removed"})
+			}
+		} else {
+			if err := os.Remove(entryDst); err != nil {
+				results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove file: %v", err)})
+			} else {
+				results = append(results, Result{Item: subItem, Action: "removed", Detail: "file removed"})
+			}
+		}
+	}
+
+	return results
+}
+
+// ejectDirBySymlinks removes symlinks inside dst that point into src.
+// Used as fallback when the source directory is unavailable.
+func ejectDirBySymlinks(item config.Item, src, dst string) []Result {
+	entries, err := os.ReadDir(dst)
+	if err != nil {
+		return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot read directory: %v", err)}}
+	}
+
+	var results []Result
+	for _, entry := range entries {
+		entryName := entry.Name()
+		entryDst := filepath.Join(dst, entryName)
+
+		subItem := config.Item{
+			Type:       item.Type,
+			SourcePath: filepath.Join(item.SourcePath, entryName),
+			TargetPath: filepath.Join(item.TargetPath, entryName),
+			Enabled:    true,
+		}
+
+		info, err := os.Lstat(entryDst)
+		if err != nil {
+			continue
+		}
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, _ := os.Readlink(entryDst)
+			// Check if symlink points into our source directory
+			if strings.HasPrefix(target, src+string(filepath.Separator)) || target == src {
+				if err := os.Remove(entryDst); err != nil {
+					results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
+				} else {
+					results = append(results, Result{Item: subItem, Action: "removed", Detail: "symlink removed"})
+				}
+			}
+		}
+	}
+
+	if len(results) == 0 {
+		return []Result{{Item: item, Action: "skipped", Detail: "no injected entries found"}}
+	}
+	return results
+}
+
+// statusDir reports per-entry status for a directory item.
+func statusDir(item config.Item, src, dst string, excludeSet map[string]bool) []ItemStatus {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return []ItemStatus{{
+			Item:   item,
+			Detail: fmt.Sprintf("source not readable: %v", err),
+		}}
+	}
+
+	if len(entries) == 0 {
+		return []ItemStatus{{
+			Item:   item,
+			Detail: "source directory is empty",
+		}}
+	}
+
+	var statuses []ItemStatus
+	for _, entry := range entries {
+		entryName := entry.Name()
+		entrySrc := filepath.Join(src, entryName)
+		entryDst := filepath.Join(dst, entryName)
+		entryExclude := filepath.Join(item.TargetPath, entryName)
+
+		subItem := config.Item{
+			Type:       item.Type,
+			SourcePath: filepath.Join(item.SourcePath, entryName),
+			TargetPath: filepath.Join(item.TargetPath, entryName),
+			Enabled:    true,
+		}
+
+		status := ItemStatus{
+			Item:     subItem,
+			Excluded: excludeSet[entryExclude],
+		}
+
+		info, err := os.Lstat(entryDst)
+		if err != nil {
+			status.Detail = "not present"
+			statuses = append(statuses, status)
+			continue
+		}
+
+		status.Present = true
+
+		if info.Mode()&os.ModeSymlink != 0 {
+			target, err := os.Readlink(entryDst)
+			if err == nil && target == entrySrc {
+				status.Current = true
+				status.Detail = "symlink ok"
+			} else if err == nil {
+				status.Detail = fmt.Sprintf("symlink points to %s (expected %s)", target, entrySrc)
+			} else {
+				status.Detail = "cannot read symlink"
+			}
+		} else {
+			status.Detail = "regular file/dir (not a symlink)"
+		}
+
+		statuses = append(statuses, status)
+	}
+
+	return statuses
 }
 
 func createSymlink(item config.Item, src, dst string, force bool) Result {
@@ -290,21 +570,6 @@ func copyFile(item config.Item, src, dst string, force bool) Result {
 
 	if err := copyFileContent(src, dst); err != nil {
 		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot copy: %v", err)}
-	}
-
-	return Result{Item: item, Action: "created", Detail: "copied"}
-}
-
-func copyDir(item config.Item, src, dst string, force bool) Result {
-	if _, err := os.Lstat(dst); err == nil {
-		if !force {
-			return Result{Item: item, Action: "skipped", Detail: "directory exists (use --force to overwrite)"}
-		}
-		os.RemoveAll(dst)
-	}
-
-	if err := copyDirRecursive(src, dst); err != nil {
-		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot copy directory: %v", err)}
 	}
 
 	return Result{Item: item, Action: "created", Detail: "copied"}
