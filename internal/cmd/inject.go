@@ -70,6 +70,17 @@ func runInject(cmd *cobra.Command, args []string) error {
 		Mode:   mode,
 	}
 
+	// Show interactive skill picker for single-target runs
+	if !injectAll {
+		selected, err := ui.SelectDirEntries(cfg)
+		if err != nil {
+			return err
+		}
+		if selected != nil {
+			opts.SelectedEntries = selected
+		}
+	}
+
 	var targets []string
 	if injectAll {
 		targets, err = gitutil.FindGitRepos(target)

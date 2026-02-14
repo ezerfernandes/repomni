@@ -22,6 +22,10 @@ type Options struct {
 	DryRun bool
 	Force  bool
 	Mode   config.InjectionMode
+	// SelectedEntries filters directory item entries. Key is the item's TargetPath,
+	// value is a set of entry names to include. If nil or missing for an item,
+	// all entries are included.
+	SelectedEntries map[string]map[string]bool
 }
 
 func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error) {
@@ -272,8 +276,17 @@ func injectDirMerged(item config.Item, src, dst string, mode config.InjectionMod
 	var results []Result
 	var excludes []string
 
+	// Check if a selection filter applies to this directory item
+	selectionFilter := opts.SelectedEntries[item.TargetPath]
+
 	for _, entry := range entries {
 		entryName := entry.Name()
+
+		// Skip entries not in the selection filter (when filter is set)
+		if selectionFilter != nil && !selectionFilter[entryName] {
+			continue
+		}
+
 		entrySrc := filepath.Join(src, entryName)
 		entryDst := filepath.Join(dst, entryName)
 		entryExclude := filepath.Join(item.TargetPath, entryName)

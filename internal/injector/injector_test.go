@@ -179,6 +179,53 @@ func TestInjectRejectsSameDir(t *testing.T) {
 	}
 }
 
+func TestInjectSelectedEntries(t *testing.T) {
+	sourceDir, targetDir, cfg := setupTestEnv(t)
+
+	// Add a second skill to the source
+	os.WriteFile(filepath.Join(sourceDir, "skills", "another.md"), []byte("another skill"), 0644)
+
+	// Only select "test.md", deselect "another.md"
+	opts := Options{
+		Mode: config.ModeSymlink,
+		SelectedEntries: map[string]map[string]bool{
+			".claude/skills": {"test.md": true},
+		},
+	}
+
+	results, err := Inject(cfg, targetDir, opts)
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	// test.md should be created
+	var foundCreated, foundAnother bool
+	for _, r := range results {
+		if r.Item.TargetPath == ".claude/skills/test.md" && r.Action == "created" {
+			foundCreated = true
+		}
+		if r.Item.TargetPath == ".claude/skills/another.md" {
+			foundAnother = true
+		}
+	}
+	if !foundCreated {
+		t.Error("expected test.md to be created")
+	}
+	if foundAnother {
+		t.Error("another.md should not appear in results when deselected")
+	}
+
+	// Verify test.md symlink exists
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "test.md")); err != nil {
+		t.Error("test.md should exist")
+	}
+
+	// Verify another.md was NOT created
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "another.md")); err == nil {
+		t.Error("another.md should NOT exist when deselected")
+	}
+}
+
 func TestInjectPreservesExistingSkills(t *testing.T) {
 	sourceDir, targetDir, cfg := setupTestEnv(t)
 
