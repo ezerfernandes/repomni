@@ -4,23 +4,42 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/ezer/repoinjector/internal/syncer"
 )
 
 // PrintSyncResults displays sync results as a table with a summary line.
 func PrintSyncResults(results []syncer.SyncResult, summary syncer.SyncSummary) {
-	fmt.Println()
-	fmt.Printf("  %-25s  %-12s  %-8s  %s\n", "Repository", "Branch", "Action", "Detail")
-	fmt.Printf("  %-25s  %-12s  %-8s  %s\n",
-		"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-		"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-		"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
-		"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
+	// Compute column widths from data.
+	repoW := len("Repository")
+	branchW := len("Branch")
+	actionW := len("Action")
+	for _, r := range results {
+		if w := len(syncActionIcon(r.Action)) + 1 + len(r.Name); w > repoW {
+			repoW = w
+		}
+		if len(r.Branch) > branchW {
+			branchW = len(r.Branch)
+		}
+		if len(r.Action) > actionW {
+			actionW = len(r.Action)
+		}
+	}
 
+	hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%-%ds  %%s\n", repoW, branchW, actionW)
+	fmt.Println()
+	fmt.Printf(hdrFmt, "Repository", "Branch", "Action", "Detail")
+	fmt.Printf(hdrFmt,
+		strings.Repeat("─", repoW),
+		strings.Repeat("─", branchW),
+		strings.Repeat("─", actionW),
+		strings.Repeat("─", 6))
+
+	rowFmt := fmt.Sprintf("  %%s %%-%ds  %%-%ds  %%-%ds  %%s\n", repoW-5, branchW, actionW)
 	for _, r := range results {
 		icon := syncActionIcon(r.Action)
-		fmt.Printf("  %s %-23s  %-12s  %-8s  %s\n", icon, r.Name, r.Branch, r.Action, r.PostDetail)
+		fmt.Printf(rowFmt, icon, r.Name, r.Branch, r.Action, r.PostDetail)
 	}
 
 	fmt.Printf("\nDone. %d pulled, %d current, %d skipped, %d conflicts, %d errors (out of %d repos).\n",
