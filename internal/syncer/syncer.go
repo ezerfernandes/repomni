@@ -97,7 +97,7 @@ func CheckStatus(repoDir string, noFetch bool) RepoStatus {
 	upstream, err := gitutil.UpstreamRef(repoDir)
 	if err != nil || upstream == "" {
 		status.State = StateNoUpstream
-		status.Detail = fmt.Sprintf("branch %s has no upstream tracking ref", branch)
+		status.Detail = "branch has no upstream tracking ref"
 		return status
 	}
 	status.Upstream = upstream
@@ -124,16 +124,16 @@ func CheckStatus(repoDir string, noFetch bool) RepoStatus {
 	switch {
 	case ahead > 0 && behind > 0:
 		status.State = StateDiverged
-		status.Detail = fmt.Sprintf("%d ahead, %d behind %s", ahead, behind, upstream)
+		status.Detail = fmt.Sprintf("%d ahead, %d behind", ahead, behind)
 	case behind > 0 && dirty:
 		status.State = StateDirty
-		status.Detail = fmt.Sprintf("%d behind %s, has uncommitted changes", behind, upstream)
+		status.Detail = fmt.Sprintf("%d behind, has uncommitted changes", behind)
 	case behind > 0:
 		status.State = StateBehind
-		status.Detail = fmt.Sprintf("%d behind %s", behind, upstream)
+		status.Detail = fmt.Sprintf("%d behind", behind)
 	case ahead > 0:
 		status.State = StateAhead
-		status.Detail = fmt.Sprintf("%d ahead of %s", ahead, upstream)
+		status.Detail = fmt.Sprintf("%d ahead", ahead)
 	case dirty:
 		status.State = StateDirty
 		status.Detail = "uncommitted changes"
@@ -166,7 +166,7 @@ func SyncRepo(repoDir string, opts SyncOptions) SyncResult {
 		result.Action = "dry-run"
 		switch status.State {
 		case StateBehind:
-			result.PostDetail = fmt.Sprintf("would pull %d commits from %s", status.Behind, status.Upstream)
+			result.PostDetail = fmt.Sprintf("would pull %d commits", status.Behind)
 		case StateDirty:
 			if opts.AutoStash {
 				result.PostDetail = fmt.Sprintf("would stash, pull %d commits, unstash", status.Behind)
@@ -207,7 +207,7 @@ func SyncRepo(repoDir string, opts SyncOptions) SyncResult {
 
 	result.Action = "pulled"
 	result.State = StatePulled
-	result.PostDetail = fmt.Sprintf("pulled %d commits from %s", status.Behind, status.Upstream)
+	result.PostDetail = fmt.Sprintf("pulled %d commits", status.Behind)
 	return result
 }
 

@@ -28,6 +28,50 @@ type Options struct {
 	SelectedEntries map[string]map[string]bool
 }
 
+// isEnvFile returns true if the item represents a .env or .envrc file.
+func isEnvFile(item config.Item) bool {
+	return item.Type == config.ItemTypeFile && (item.TargetPath == ".env" || item.TargetPath == ".envrc")
+}
+
+type envSearchResult struct {
+	// Found maps filename (.env or .envrc) to the directory where it was found.
+	Found map[string]string
+	// HitGitRepo is true if the search stopped at a parent git repo that had neither file.
+	HitGitRepo bool
+}
+
+// findEnvInParents searches parent directories starting from the parent of startDir
+// for .env and .envrc files. It walks upward until it finds at least one of them,
+// encounters a git repository that has neither, or reaches the filesystem root.
+func findEnvInParents(startDir string) envSearchResult {
+	dir := filepath.Dir(startDir)
+
+	for {
+		found := make(map[string]string)
+
+		for _, name := range []string{".env", ".envrc"} {
+			path := filepath.Join(dir, name)
+			if _, err := os.Stat(path); err == nil {
+				found[name] = dir
+			}
+		}
+
+		if len(found) > 0 {
+			return envSearchResult{Found: found}
+		}
+
+		if gitutil.IsGitRepo(dir) {
+			return envSearchResult{HitGitRepo: true}
+		}
+
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return envSearchResult{}
+		}
+		dir = parent
+	}
+}
+
 func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error) {
 	targetDir, err := filepath.Abs(targetDir)
 	if err != nil {
@@ -60,9 +104,30 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 	var results []Result
 	var excludePaths []string
 
+	// Search parent directories for .env/.envrc files
+	envSearch := findEnvInParents(targetDir)
+
 	for _, item := range cfg.EnabledItems() {
 		src := filepath.Join(sourceDir, item.SourcePath)
 		dst := filepath.Join(targetDir, item.TargetPath)
+
+		var envFoundDir string
+
+		// For .env/.envrc files, search parent directories instead of source dir
+		if isEnvFile(item) {
+			fileName := item.TargetPath
+			if foundDir, ok := envSearch.Found[fileName]; ok {
+				src = filepath.Join(foundDir, fileName)
+				envFoundDir = foundDir
+			} else {
+				detail := "not found in any parent directory"
+				if envSearch.HitGitRepo {
+					detail = "not found in parent git repository"
+				}
+				results = append(results, Result{Item: item, Action: "skipped", Detail: detail})
+				continue
+			}
+		}
 
 		// Check source exists
 		srcInfo, err := os.Stat(src)
@@ -84,7 +149,11 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 			if mode == config.ModeCopy {
 				action = "copy"
 			}
-			results = append(results, Result{Item: item, Action: "dry-run", Detail: fmt.Sprintf("would %s %s -> %s", action, src, dst)})
+			detail := fmt.Sprintf("would %s %s -> %s", action, src, dst)
+			if envFoundDir != "" {
+				detail = fmt.Sprintf("found at %s, %s", envFoundDir, detail)
+			}
+			results = append(results, Result{Item: item, Action: "dry-run", Detail: detail})
 			excludePaths = append(excludePaths, item.TargetPath)
 			continue
 		}
@@ -100,6 +169,10 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 			result = createSymlink(item, src, dst, opts.Force)
 		} else {
 			result = copyFile(item, src, dst, opts.Force)
+		}
+
+		if envFoundDir != "" {
+			result.Detail = fmt.Sprintf("found at %s, %s", envFoundDir, result.Detail)
 		}
 
 		results = append(results, result)
@@ -215,9 +288,20 @@ func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 
 	var statuses []ItemStatus
 
+	// Search parent directories for .env/.envrc files
+	envSearch := findEnvInParents(targetDir)
+
 	for _, item := range cfg.EnabledItems() {
 		src := filepath.Join(sourceDir, item.SourcePath)
 		dst := filepath.Join(targetDir, item.TargetPath)
+
+		// For .env/.envrc files, use parent directory search
+		if isEnvFile(item) {
+			fileName := item.TargetPath
+			if foundDir, ok := envSearch.Found[fileName]; ok {
+				src = filepath.Join(foundDir, fileName)
+			}
+		}
 
 		// Directory items get per-entry status
 		if item.Type == config.ItemTypeDirectory {

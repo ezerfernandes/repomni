@@ -12,8 +12,14 @@ import (
 func setupTestEnv(t *testing.T) (sourceDir, targetDir string, cfg *config.Config) {
 	t.Helper()
 
-	sourceDir = t.TempDir()
-	targetDir = t.TempDir()
+	// Create a root directory that contains both source and target as subdirs.
+	// .env and .envrc are placed in rootDir (parent of target) so that
+	// findEnvInParents discovers them when walking up from targetDir.
+	rootDir := t.TempDir()
+	sourceDir = filepath.Join(rootDir, "source")
+	targetDir = filepath.Join(rootDir, "target")
+	os.MkdirAll(sourceDir, 0755)
+	os.MkdirAll(targetDir, 0755)
 
 	// Init git repo in target
 	cmd := exec.Command("git", "init", targetDir)
@@ -25,8 +31,10 @@ func setupTestEnv(t *testing.T) (sourceDir, targetDir string, cfg *config.Config
 	os.MkdirAll(filepath.Join(sourceDir, "skills"), 0755)
 	os.WriteFile(filepath.Join(sourceDir, "skills", "test.md"), []byte("skill"), 0644)
 	os.WriteFile(filepath.Join(sourceDir, "hooks.json"), []byte(`{"hooks":[]}`), 0644)
-	os.WriteFile(filepath.Join(sourceDir, ".envrc"), []byte("export FOO=bar"), 0644)
-	os.WriteFile(filepath.Join(sourceDir, ".env"), []byte("SECRET=123"), 0644)
+
+	// Place .env and .envrc in rootDir (parent of target) for parent search
+	os.WriteFile(filepath.Join(rootDir, ".envrc"), []byte("export FOO=bar"), 0644)
+	os.WriteFile(filepath.Join(rootDir, ".env"), []byte("SECRET=123"), 0644)
 
 	cfg = &config.Config{
 		Version:   1,
@@ -52,12 +60,13 @@ func TestInjectSymlink(t *testing.T) {
 		}
 	}
 
-	// Verify file symlinks
+	// Verify .envrc symlinks to parent directory (found via parent search)
 	link, err := os.Readlink(filepath.Join(targetDir, ".envrc"))
 	if err != nil {
 		t.Fatalf("cannot read symlink: %v", err)
 	}
-	expected := filepath.Join(sourceDir, ".envrc")
+	rootDir := filepath.Dir(targetDir)
+	expected := filepath.Join(rootDir, ".envrc")
 	if link != expected {
 		t.Errorf("expected symlink to %q, got %q", expected, link)
 	}
@@ -122,8 +131,9 @@ func TestInjectCopy(t *testing.T) {
 		t.Error(".envrc should be a regular file, not a symlink")
 	}
 
-	// Verify content matches
-	src, _ := os.ReadFile(filepath.Join(sourceDir, ".envrc"))
+	// Verify content matches (source is in parent directory)
+	rootDir := filepath.Dir(targetDir)
+	src, _ := os.ReadFile(filepath.Join(rootDir, ".envrc"))
 	dst, _ := os.ReadFile(filepath.Join(targetDir, ".envrc"))
 	if string(src) != string(dst) {
 		t.Error("copied file content does not match source")
@@ -371,6 +381,83 @@ func TestEjectPreservesExistingSkills(t *testing.T) {
 	// .claude/skills should NOT be removed (still has existing.md)
 	if _, err := os.Stat(existingSkillDir); err != nil {
 		t.Error(".claude/skills should still exist because it has non-injected content")
+	}
+}
+
+func TestInjectEnvNotFoundInParentGitRepo(t *testing.T) {
+	rootDir := t.TempDir()
+	sourceDir := filepath.Join(rootDir, "source")
+	targetDir := filepath.Join(rootDir, "target")
+	os.MkdirAll(sourceDir, 0755)
+	os.MkdirAll(targetDir, 0755)
+
+	// Make rootDir a git repo (parent git repo boundary) with no .env/.envrc
+	exec.Command("git", "init", rootDir).Run()
+	exec.Command("git", "init", targetDir).Run()
+
+	os.MkdirAll(filepath.Join(sourceDir, "skills"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "test.md"), []byte("skill"), 0644)
+	os.WriteFile(filepath.Join(sourceDir, "hooks.json"), []byte(`{"hooks":[]}`), 0644)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items:     config.DefaultItems(),
+	}
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	for _, r := range results {
+		if r.Item.TargetPath == ".env" || r.Item.TargetPath == ".envrc" {
+			if r.Action != "skipped" {
+				t.Errorf("expected 'skipped' for %s, got %q", r.Item.TargetPath, r.Action)
+			}
+			if r.Detail != "not found in parent git repository" {
+				t.Errorf("expected 'not found in parent git repository' for %s, got %q", r.Item.TargetPath, r.Detail)
+			}
+		}
+	}
+}
+
+func TestInjectEnvPartialFind(t *testing.T) {
+	rootDir := t.TempDir()
+	sourceDir := filepath.Join(rootDir, "source")
+	targetDir := filepath.Join(rootDir, "target")
+	os.MkdirAll(sourceDir, 0755)
+	os.MkdirAll(targetDir, 0755)
+
+	exec.Command("git", "init", targetDir).Run()
+
+	// Only place .env in rootDir, not .envrc
+	os.WriteFile(filepath.Join(rootDir, ".env"), []byte("SECRET=123"), 0644)
+
+	os.MkdirAll(filepath.Join(sourceDir, "skills"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "test.md"), []byte("skill"), 0644)
+	os.WriteFile(filepath.Join(sourceDir, "hooks.json"), []byte(`{"hooks":[]}`), 0644)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items:     config.DefaultItems(),
+	}
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	for _, r := range results {
+		if r.Item.TargetPath == ".env" && r.Action != "created" {
+			t.Errorf("expected 'created' for .env, got %q: %s", r.Action, r.Detail)
+		}
+		if r.Item.TargetPath == ".envrc" && r.Action != "skipped" {
+			t.Errorf("expected 'skipped' for .envrc, got %q: %s", r.Action, r.Detail)
+		}
 	}
 }
 
