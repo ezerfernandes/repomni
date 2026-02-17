@@ -97,7 +97,7 @@ func CheckStatus(repoDir string, noFetch bool) RepoStatus {
 	upstream, err := gitutil.UpstreamRef(repoDir)
 	if err != nil || upstream == "" {
 		status.State = StateNoUpstream
-		status.Detail = "branch has no upstream tracking ref"
+		status.Detail = "no upstream tracking ref"
 		return status
 	}
 	status.Upstream = upstream
