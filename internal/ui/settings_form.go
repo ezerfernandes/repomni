@@ -24,7 +24,7 @@ var defaultItemDefs = []itemDef{
 	{label: ".env (file)", key: ".env", sourcePath: ".env", targetPath: ".env", itemType: config.ItemTypeFile},
 }
 
-func RunConfigureForm(cfg *config.Config) (*config.Config, error) {
+func RunSettingsForm(cfg *config.Config) (*config.Config, error) {
 	var sourceDir string
 	if cfg.SourceDir != "" {
 		sourceDir = cfg.SourceDir

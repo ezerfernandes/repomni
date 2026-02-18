@@ -20,7 +20,7 @@ When working with multiple branch copies of the same repo (e.g., running paralle
 | `.envrc` | `.envrc` | file |
 | `.env` | `.env` | file |
 
-Source paths are configurable via `repoinjector configure`.
+Source paths are configurable via `repoinjector settings`.
 
 ## Installation
 
@@ -89,7 +89,7 @@ my-agent-config/
 ### 2. Configure repoinjector
 
 ```sh
-repoinjector configure
+repoinjector settings
 ```
 
 This walks you through an interactive wizard to set the source directory, injection mode, and which items to inject. Configuration is saved to `~/.config/repoinjector/config.yaml`.
@@ -97,7 +97,7 @@ This walks you through an interactive wizard to set the source directory, inject
 For scripted setup:
 
 ```sh
-repoinjector configure --non-interactive --source /path/to/my-agent-config
+repoinjector settings --non-interactive --source /path/to/my-agent-config
 ```
 
 ### 3. Inject into a repo
@@ -147,7 +147,7 @@ repoinjector eject --all /path/to/my-clones
 
 | Command | Description |
 |---|---|
-| `configure` | Interactive setup wizard |
+| `settings` | Interactive setup wizard |
 | `inject [target]` | Inject files into target repo (default: current dir) |
 | `status [target]` | Show injection state of target repo |
 | `eject [target]` | Remove injected files from target repo |
@@ -162,8 +162,8 @@ repoinjector eject --all /path/to/my-clones
 | `--copy` | inject | Use copy mode instead of symlink for this run |
 | `--symlink` | inject | Use symlink mode for this run |
 | `--json` | status | Output as JSON |
-| `--non-interactive` | configure | Skip interactive prompts, use defaults |
-| `--source <dir>` | configure | Set source directory without prompting |
+| `--non-interactive` | settings | Skip interactive prompts, use defaults |
+| `--source <dir>` | settings | Set source directory without prompting |
 
 ## How it works
 

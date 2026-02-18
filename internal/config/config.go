@@ -77,7 +77,7 @@ func Load() (*Config, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read config (run 'repoinjector configure' first): %w", err)
+		return nil, fmt.Errorf("cannot read config (run 'repoinjector settings' first): %w", err)
 	}
 
 	var cfg Config

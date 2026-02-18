@@ -17,10 +17,10 @@ The system shall support two item types: `file` for single files and `directory`
 ### REQ-CFG-005: Injection modes
 The system shall support two injection modes: `symlink` and `copy`.
 
-## 2. Configure Command
+## 2. Settings Command
 
 ### REQ-CONF-001: Interactive wizard
-When the user runs `repoinjector configure`, the system shall present an interactive multi-step form collecting: source directory path, injection mode, items to inject, and a confirmation prompt.
+When the user runs `repoinjector settings`, the system shall present an interactive multi-step form collecting: source directory path, injection mode, items to inject, and a confirmation prompt.
 
 ### REQ-CONF-002: Source directory validation
 When the user provides a source directory during configuration, the system shall validate that the path exists and is a directory.
@@ -112,7 +112,7 @@ The system shall only inject items whose `enabled` field is `true` in the config
 When updating `.git/info/exclude`, the system shall replace the existing managed block rather than appending a duplicate.
 
 ### REQ-INJ-025: Config required
-If no configuration file exists when running `inject`, then the system shall return an error suggesting the user run `repoinjector configure`.
+If no configuration file exists when running `inject`, then the system shall return an error suggesting the user run `repoinjector settings`.
 
 ## 4. Status Command
 

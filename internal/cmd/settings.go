@@ -9,46 +9,46 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var configureCmd = &cobra.Command{
-	Use:   "configure",
+var settingsCmd = &cobra.Command{
+	Use:   "settings",
 	Short: "Interactively configure repoinjector",
 	Long: `Run an interactive wizard to set up repoinjector. Configures the source
 directory, injection mode, and which items to inject.
 
 The configuration is saved to ~/.config/repoinjector/config.yaml.`,
-	RunE: runConfigure,
+	RunE: runSettings,
 }
 
 var (
-	configureSource         string
-	configureNonInteractive bool
+	settingsSource         string
+	settingsNonInteractive bool
 )
 
 func init() {
-	rootCmd.AddCommand(configureCmd)
-	configureCmd.Flags().StringVar(&configureSource, "source", "", "source directory (skip interactive prompt)")
-	configureCmd.Flags().BoolVar(&configureNonInteractive, "non-interactive", false, "use defaults without prompting")
+	rootCmd.AddCommand(settingsCmd)
+	settingsCmd.Flags().StringVar(&settingsSource, "source", "", "source directory (skip interactive prompt)")
+	settingsCmd.Flags().BoolVar(&settingsNonInteractive, "non-interactive", false, "use defaults without prompting")
 }
 
-func runConfigure(cmd *cobra.Command, args []string) error {
+func runSettings(cmd *cobra.Command, args []string) error {
 	// Load existing config as defaults, or start fresh
 	cfg, err := config.Load()
 	if err != nil {
 		cfg = config.DefaultConfig()
 	}
 
-	if configureNonInteractive {
-		if configureSource == "" {
+	if settingsNonInteractive {
+		if settingsSource == "" {
 			return fmt.Errorf("--source is required in non-interactive mode")
 		}
-		cfg.SourceDir = configureSource
+		cfg.SourceDir = settingsSource
 	} else {
 		// Override source if flag provided
-		if configureSource != "" {
-			cfg.SourceDir = configureSource
+		if settingsSource != "" {
+			cfg.SourceDir = settingsSource
 		}
 
-		cfg, err = ui.RunConfigureForm(cfg)
+		cfg, err = ui.RunSettingsForm(cfg)
 		if err != nil {
 			return fmt.Errorf("configuration cancelled: %w", err)
 		}
