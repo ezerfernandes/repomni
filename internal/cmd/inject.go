@@ -8,6 +8,7 @@ import (
 	"github.com/ezer/repoinjector/internal/config"
 	"github.com/ezer/repoinjector/internal/gitutil"
 	"github.com/ezer/repoinjector/internal/injector"
+	"github.com/ezer/repoinjector/internal/repoconfig"
 	"github.com/ezer/repoinjector/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -42,6 +43,16 @@ func init() {
 	injectCmd.Flags().BoolVar(&injectSymlink, "symlink", false, "use symlink mode for this run")
 }
 
+// loadRepoConfig attempts to load a per-repo config from the target's git directory.
+// Returns (nil, nil) if the target is not a git repo or has no per-repo config.
+func loadRepoConfig(target string) (*repoconfig.RepoConfig, error) {
+	gitDir, err := gitutil.FindGitDir(target)
+	if err != nil {
+		return nil, nil
+	}
+	return repoconfig.Load(gitDir)
+}
+
 func runInject(cmd *cobra.Command, args []string) error {
 	cfg, err := config.Load()
 	if err != nil {
@@ -70,9 +81,17 @@ func runInject(cmd *cobra.Command, args []string) error {
 		Mode:   mode,
 	}
 
-	// Show interactive skill picker for single-target runs
+	// For single-target runs, apply per-repo config filtering and show picker.
+	injectCfg := cfg
 	if !injectAll {
-		selected, err := ui.SelectDirEntries(cfg)
+		var allowedEntries map[string]map[string]bool
+		repoCfg, _ := loadRepoConfig(target)
+		if repoCfg != nil {
+			injectCfg = repoCfg.FilterGlobalConfig(cfg)
+			allowedEntries = repoCfg.ToSelectedEntries()
+		}
+
+		selected, err := ui.SelectDirEntries(injectCfg, allowedEntries)
 		if err != nil {
 			return err
 		}
@@ -96,11 +115,22 @@ func runInject(cmd *cobra.Command, args []string) error {
 
 	hasErrors := false
 	for _, t := range targets {
+		targetCfg := injectCfg
+
+		// For --all, apply per-repo config per target.
 		if injectAll {
 			fmt.Printf("\nInjecting into %s...\n", t)
+			repoCfg, _ := loadRepoConfig(t)
+			if repoCfg != nil {
+				targetCfg = repoCfg.FilterGlobalConfig(cfg)
+				opts.SelectedEntries = repoCfg.ToSelectedEntries()
+			} else {
+				targetCfg = cfg
+				opts.SelectedEntries = nil
+			}
 		}
 
-		results, err := injector.Inject(cfg, t, opts)
+		results, err := injector.Inject(targetCfg, t, opts)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			hasErrors = true

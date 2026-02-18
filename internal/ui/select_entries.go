@@ -10,10 +10,12 @@ import (
 )
 
 // SelectDirEntries shows a multi-select for each enabled directory item,
-// listing all entries from the source directory (all initially selected).
+// listing entries from the source directory (all initially selected).
+// If allowedEntries is non-nil and has an entry for a directory item's TargetPath,
+// only entries in that set are shown. Pass nil to show all entries.
 // Returns a map from item TargetPath to a set of selected entry names.
 // Returns nil if there are no directory items with entries.
-func SelectDirEntries(cfg *config.Config) (map[string]map[string]bool, error) {
+func SelectDirEntries(cfg *config.Config, allowedEntries map[string]map[string]bool) (map[string]map[string]bool, error) {
 	sourceDir, err := filepath.Abs(cfg.SourceDir)
 	if err != nil {
 		return nil, err
@@ -40,8 +42,12 @@ func SelectDirEntries(cfg *config.Config) (map[string]map[string]bool, error) {
 
 		var options []huh.Option[string]
 		var selected []string
+		allowed := allowedEntries[item.TargetPath] // nil if no filter for this item
 		for _, entry := range entries {
 			name := entry.Name()
+			if allowed != nil && !allowed[name] {
+				continue
+			}
 			label := name
 			if entry.IsDir() {
 				label += "/"
