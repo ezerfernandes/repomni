@@ -236,6 +236,113 @@ func TestInjectSelectedEntries(t *testing.T) {
 	}
 }
 
+func TestInjectSelectedEntries_RepoConfigFlow(t *testing.T) {
+	// Simulates the full per-repo config flow: configure selects 2 of 3 skills,
+	// then inject with SelectedEntries from repo config only injects those 2.
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	// Create 3 skills in source.
+	os.MkdirAll(filepath.Join(sourceDir, "skills", "hello-world"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "hello-world", "README.md"), []byte("hello"), 0644)
+	os.MkdirAll(filepath.Join(sourceDir, "skills", "web-browser"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "web-browser", "README.md"), []byte("browser"), 0644)
+	os.MkdirAll(filepath.Join(sourceDir, "skills", "jira-tasks"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "jira-tasks", "README.md"), []byte("jira"), 0644)
+
+	// Filtered config (as FilterGlobalConfig would produce): only skills enabled.
+	filteredCfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	// SelectedEntries from ToSelectedEntries: only hello-world and web-browser.
+	opts := Options{
+		Mode: config.ModeSymlink,
+		SelectedEntries: map[string]map[string]bool{
+			".claude/skills": {
+				"hello-world": true,
+				"web-browser": true,
+			},
+		},
+	}
+
+	results, err := Inject(filteredCfg, targetDir, opts)
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	injected := map[string]string{}
+	for _, r := range results {
+		injected[filepath.Base(r.Item.TargetPath)] = r.Action
+	}
+
+	if injected["hello-world"] != "created" {
+		t.Errorf("expected hello-world to be created, got %q", injected["hello-world"])
+	}
+	if injected["web-browser"] != "created" {
+		t.Errorf("expected web-browser to be created, got %q", injected["web-browser"])
+	}
+	if _, found := injected["jira-tasks"]; found {
+		t.Error("jira-tasks should NOT appear in results at all (excluded by SelectedEntries)")
+	}
+
+	// Verify on disk.
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "hello-world")); err != nil {
+		t.Error("hello-world should exist on disk")
+	}
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "web-browser")); err != nil {
+		t.Error("web-browser should exist on disk")
+	}
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "jira-tasks")); err == nil {
+		t.Error("jira-tasks should NOT exist on disk")
+	}
+}
+
+func TestInjectWithoutSelectedEntries_InjectsAllSkills(t *testing.T) {
+	// When no repo config exists, all skills should be injected.
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	os.MkdirAll(filepath.Join(sourceDir, "skills", "hello-world"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "hello-world", "README.md"), []byte("hello"), 0644)
+	os.MkdirAll(filepath.Join(sourceDir, "skills", "web-browser"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "web-browser", "README.md"), []byte("browser"), 0644)
+	os.MkdirAll(filepath.Join(sourceDir, "skills", "jira-tasks"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "jira-tasks", "README.md"), []byte("jira"), 0644)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	// No SelectedEntries (no repo config).
+	opts := Options{Mode: config.ModeSymlink}
+
+	results, err := Inject(cfg, targetDir, opts)
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	injected := map[string]string{}
+	for _, r := range results {
+		injected[filepath.Base(r.Item.TargetPath)] = r.Action
+	}
+
+	// All 4 skills should be injected (test.md from setupTestEnv + our 3).
+	for _, skill := range []string{"test.md", "hello-world", "web-browser", "jira-tasks"} {
+		if injected[skill] != "created" {
+			t.Errorf("expected %s to be created, got %q", skill, injected[skill])
+		}
+	}
+}
+
 func TestInjectPreservesExistingSkills(t *testing.T) {
 	sourceDir, targetDir, cfg := setupTestEnv(t)
 
