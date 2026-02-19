@@ -98,6 +98,7 @@ func collectBranchInfo(repoPath string) ui.BranchInfo {
 		cfg, _ := repoconfig.Load(gitDir)
 		if cfg != nil {
 			info.State = cfg.State
+			info.Remote = cfg.Remote
 		}
 	}
 

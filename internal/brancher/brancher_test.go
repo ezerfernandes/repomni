@@ -209,3 +209,112 @@ func TestBranchNoParentRepo(t *testing.T) {
 		t.Error("expected error when no parent git repo exists")
 	}
 }
+
+func TestSanitizeBranchName(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"feature/my-thing", "feature-my-thing"},
+		{"fix/bug/deep", "fix-bug-deep"},
+		{"simple", "simple"},
+		{"has:colon", "has-colon"},
+		{"has space", "has-space"},
+		{"combo/with:stuff", "combo-with-stuff"},
+		{"back\\slash", "back-slash"},
+		{"question?mark", "question-mark"},
+		{"star*name", "star-name"},
+		{"bracket[name", "bracket-name"},
+		{"tilde~name", "tilde-name"},
+		{"caret^name", "caret-name"},
+	}
+	for _, tc := range cases {
+		got := SanitizeBranchName(tc.input)
+		if got != tc.want {
+			t.Errorf("SanitizeBranchName(%q) = %q, want %q", tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestClone(t *testing.T) {
+	bareDir, cloneDir := initBareCloneEnv(t)
+
+	// Create a remote branch by pushing from the clone.
+	run(t, cloneDir, "git", "checkout", "-b", "feature/my-thing")
+	writeFile(t, filepath.Join(cloneDir, "feature.txt"), "feature work")
+	run(t, cloneDir, "git", "add", ".")
+	run(t, cloneDir, "git", "commit", "-m", "feature commit")
+	run(t, cloneDir, "git", "push", "-u", "origin", "feature/my-thing")
+	// Switch back so the clone doesn't interfere.
+	run(t, cloneDir, "git", "checkout", "master")
+
+	// Create a working directory inside the clone.
+	workDir := filepath.Join(cloneDir, "workdir")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Clone(workDir, "feature/my-thing")
+	if err != nil {
+		t.Fatalf("Clone failed: %v", err)
+	}
+
+	expectedDir := filepath.Join(workDir, "feature-my-thing")
+
+	if result.ParentRepo != cloneDir {
+		t.Errorf("ParentRepo = %q, want %q", result.ParentRepo, cloneDir)
+	}
+	if result.RemoteURL != bareDir {
+		t.Errorf("RemoteURL = %q, want %q", result.RemoteURL, bareDir)
+	}
+	if result.TargetDir != expectedDir {
+		t.Errorf("TargetDir = %q, want %q", result.TargetDir, expectedDir)
+	}
+	if result.Branch != "feature/my-thing" {
+		t.Errorf("Branch = %q, want %q", result.Branch, "feature/my-thing")
+	}
+
+	// Verify the directory was created and is a git repo.
+	if !gitutil.IsGitRepo(expectedDir) {
+		t.Fatal("target is not a git repository")
+	}
+
+	// Verify the correct branch was checked out.
+	branch, err := gitutil.CurrentBranch(expectedDir)
+	if err != nil {
+		t.Fatalf("CurrentBranch failed: %v", err)
+	}
+	if branch != "feature/my-thing" {
+		t.Errorf("current branch = %q, want %q", branch, "feature/my-thing")
+	}
+}
+
+func TestCloneDirectoryExists(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+
+	workDir := filepath.Join(cloneDir, "workdir")
+	existing := filepath.Join(workDir, "feature-existing")
+	if err := os.MkdirAll(existing, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Clone(workDir, "feature/existing")
+	if err == nil {
+		t.Error("expected error when directory already exists")
+	}
+}
+
+func TestCloneEmptyName(t *testing.T) {
+	_, err := Clone(".", "")
+	if err == nil {
+		t.Error("expected error for empty branch name")
+	}
+}
+
+func TestCloneNoParentRepo(t *testing.T) {
+	workDir := t.TempDir()
+	_, err := Clone(workDir, "feature/something")
+	if err == nil {
+		t.Error("expected error when no parent git repo exists")
+	}
+}

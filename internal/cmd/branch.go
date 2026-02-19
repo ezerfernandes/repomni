@@ -14,8 +14,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var branchCmd = &cobra.Command{
-	Use:   "branch <branch-name>",
+var createCmd = &cobra.Command{
+	Use:   "create <branch-name>",
 	Short: "Clone the parent repo and create a new branch",
 	Long: `Finds the closest parent directory that is a git repository, clones it
 into the current directory using the branch name, and checks out a new branch
@@ -23,17 +23,17 @@ with that name.
 
 This is useful for creating isolated working copies for feature branches.`,
 	Args: cobra.ExactArgs(1),
-	RunE: runBranch,
+	RunE: runCreate,
 }
 
-var branchNoInject bool
+var createNoInject bool
 
 func init() {
-	rootCmd.AddCommand(branchCmd)
-	branchCmd.Flags().BoolVar(&branchNoInject, "no-inject", false, "skip automatic injection into the new branch")
+	rootCmd.AddCommand(createCmd)
+	createCmd.Flags().BoolVar(&createNoInject, "no-inject", false, "skip automatic injection into the new branch")
 }
 
-func runBranch(cmd *cobra.Command, args []string) error {
+func runCreate(cmd *cobra.Command, args []string) error {
 	result, err := brancher.Branch(".", args[0])
 	if err != nil {
 		return err
@@ -44,7 +44,7 @@ func runBranch(cmd *cobra.Command, args []string) error {
 	parentGitDir, parentGitDirErr := gitutil.FindGitDir(result.ParentRepo)
 
 	// Auto-inject into the new repo unless --no-inject is set.
-	if !branchNoInject {
+	if !createNoInject {
 		if err := autoInject(result, parentGitDir, parentGitDirErr); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-injection failed: %v\n", err)
 		}
@@ -57,6 +57,7 @@ func runBranch(cmd *cobra.Command, args []string) error {
 			newCfg = &repoconfig.RepoConfig{Version: 1}
 		}
 		newCfg.State = string(repoconfig.StateActive)
+		newCfg.Remote = false
 		if err := repoconfig.Save(newGitDir, newCfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not set initial state: %v\n", err)
 		}

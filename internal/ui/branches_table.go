@@ -12,6 +12,7 @@ type BranchInfo struct {
 	Branch string `json:"branch"`
 	State  string `json:"state"`
 	Dirty  bool   `json:"dirty"`
+	Remote bool   `json:"remote"`
 }
 
 // PrintBranchesTable renders a colored table of branch repos.
@@ -19,10 +20,14 @@ func PrintBranchesTable(infos []BranchInfo) {
 	nameW := len("Name")
 	stateW := len("State")
 	hasDiffers := false
+	hasRemote := false
 	for _, info := range infos {
 		display := info.Name
+		if info.Remote {
+			display += "*"
+			hasRemote = true
+		}
 		if info.Name != info.Branch {
-			display = info.Name + "*"
 			hasDiffers = true
 		}
 		if len(display) > nameW {
@@ -48,12 +53,12 @@ func PrintBranchesTable(infos []BranchInfo) {
 	for _, info := range infos {
 		dirty := " "
 		if info.Dirty {
-			dirty = "*"
+			dirty = "x"
 		}
 
 		display := info.Name
-		if info.Name != info.Branch {
-			display = info.Name + "*"
+		if info.Remote {
+			display += "*"
 		}
 
 		stateDisplay := RenderState(info.State)
@@ -73,9 +78,14 @@ func PrintBranchesTable(infos []BranchInfo) {
 			dirty)
 	}
 
-	if hasDiffers {
+	if hasRemote || hasDiffers {
 		fmt.Println()
-		fmt.Println("  * Name and Branch differs")
+		if hasRemote {
+			fmt.Println("  * Cloned from an existing remote branch")
+		}
+		if hasDiffers {
+			fmt.Println("  * Name and Branch differs")
+		}
 	}
 	fmt.Println()
 }

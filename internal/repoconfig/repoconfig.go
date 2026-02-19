@@ -15,6 +15,7 @@ import (
 type RepoConfig struct {
 	Version int              `yaml:"version"`
 	State   string           `yaml:"state,omitempty"`
+	Remote  bool             `yaml:"remote,omitempty"`
 	Items   []RepoItemConfig `yaml:"items"`
 }
 
