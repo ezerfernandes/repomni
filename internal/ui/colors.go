@@ -8,7 +8,7 @@ func StateStyle(state string) lipgloss.Style {
 	base := lipgloss.NewStyle()
 	switch state {
 	case "active":
-		return base.Foreground(lipgloss.Color("2")) // green
+		return base.Foreground(lipgloss.Color("#2e8b57")) // dark green
 	case "review":
 		return base.Foreground(lipgloss.Color("3")) // yellow
 	case "done":

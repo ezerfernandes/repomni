@@ -17,30 +17,31 @@ type BranchInfo struct {
 // PrintBranchesTable renders a colored table of branch repos.
 func PrintBranchesTable(infos []BranchInfo) {
 	nameW := len("Name")
-	branchW := len("Branch")
 	stateW := len("State")
+	hasDiffers := false
 	for _, info := range infos {
-		if len(info.Name) > nameW {
-			nameW = len(info.Name)
+		display := info.Name
+		if info.Name != info.Branch {
+			display = info.Name + "*"
+			hasDiffers = true
 		}
-		if len(info.Branch) > branchW {
-			branchW = len(info.Branch)
+		if len(display) > nameW {
+			nameW = len(display)
 		}
-		display := info.State
-		if display == "" {
-			display = "--"
+		stateDisplay := info.State
+		if stateDisplay == "" {
+			stateDisplay = "--"
 		}
-		if len(display) > stateW {
-			stateW = len(display)
+		if len(stateDisplay) > stateW {
+			stateW = len(stateDisplay)
 		}
 	}
 
 	fmt.Println()
-	hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%-%ds  %%s\n", nameW, branchW, stateW)
-	fmt.Printf(hdrFmt, "Name", "Branch", "State", "Dirty")
+	hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%s\n", nameW, stateW)
+	fmt.Printf(hdrFmt, "Name", "State", "Dirty")
 	fmt.Printf(hdrFmt,
 		strings.Repeat("─", nameW),
-		strings.Repeat("─", branchW),
 		strings.Repeat("─", stateW),
 		strings.Repeat("─", 5))
 
@@ -50,10 +51,13 @@ func PrintBranchesTable(infos []BranchInfo) {
 			dirty = "*"
 		}
 
+		display := info.Name
+		if info.Name != info.Branch {
+			display = info.Name + "*"
+		}
+
 		stateDisplay := RenderState(info.State)
 
-		// Compute raw (uncolored) state width for manual padding,
-		// since ANSI codes break %-*s formatting.
 		rawState := info.State
 		if rawState == "" {
 			rawState = "--"
@@ -63,11 +67,15 @@ func PrintBranchesTable(infos []BranchInfo) {
 			pad = 0
 		}
 
-		fmt.Printf("  %-*s  %-*s  %s%s  %s\n",
-			nameW, info.Name,
-			branchW, info.Branch,
+		fmt.Printf("  %-*s  %s%s  %s\n",
+			nameW, display,
 			stateDisplay, strings.Repeat(" ", pad),
 			dirty)
+	}
+
+	if hasDiffers {
+		fmt.Println()
+		fmt.Println("  * Name and Branch differs")
 	}
 	fmt.Println()
 }
