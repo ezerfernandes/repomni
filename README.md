@@ -1,5 +1,7 @@
 # repoinjector
 
+test
+
 A CLI tool that injects shared configuration files into multiple repository clones, keeping them invisible to git.
 
 When working with multiple branch copies of the same repo (e.g., running parallel AI agents across branches), you need the same `.envrc`, `.env`, Claude skills, and hooks in every clone. Repoinjector symlinks them from a single source directory so you configure once and every clone stays in sync.
