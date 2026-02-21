@@ -7,12 +7,13 @@ import (
 
 // BranchInfo holds the collected information about one branch repo.
 type BranchInfo struct {
-	Path   string `json:"path"`
-	Name   string `json:"name"`
-	Branch string `json:"branch"`
-	State  string `json:"state"`
-	Dirty  bool   `json:"dirty"`
-	Remote bool   `json:"remote"`
+	Path     string `json:"path"`
+	Name     string `json:"name"`
+	Branch   string `json:"branch"`
+	State    string `json:"state"`
+	MergeURL string `json:"merge_url,omitempty"`
+	Dirty    bool   `json:"dirty"`
+	Remote   bool   `json:"remote"`
 }
 
 // PrintBranchesTable renders a colored table of branch repos.

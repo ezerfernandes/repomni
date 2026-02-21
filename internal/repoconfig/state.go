@@ -6,15 +6,22 @@ import "fmt"
 type WorkflowState string
 
 const (
-	StateActive WorkflowState = "active"
-	StateReview WorkflowState = "review"
-	StateDone   WorkflowState = "done"
-	StatePaused WorkflowState = "paused"
+	StateActive        WorkflowState = "active"
+	StateReview        WorkflowState = "review"
+	StateApproved      WorkflowState = "approved"
+	StateReviewBlocked WorkflowState = "review-blocked"
+	StateMerged        WorkflowState = "merged"
+	StateClosed        WorkflowState = "closed"
+	StateDone          WorkflowState = "done"
+	StatePaused        WorkflowState = "paused"
 )
 
 // KnownStates returns the predefined workflow state names.
 func KnownStates() []WorkflowState {
-	return []WorkflowState{StateActive, StateReview, StateDone, StatePaused}
+	return []WorkflowState{
+		StateActive, StateReview, StateApproved, StateReviewBlocked,
+		StateMerged, StateClosed, StateDone, StatePaused,
+	}
 }
 
 // IsKnownState returns true if s matches one of the predefined states.
