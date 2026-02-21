@@ -18,7 +18,8 @@ var branchesCmd = &cobra.Command{
 	Long: `List all git repositories that are immediate subdirectories of the target
 directory, showing each repo's directory name, git branch, and workflow state.
 
-States are color-coded: active (green), review (yellow), done (gray), paused (blue).
+States are color-coded: active (green), review (yellow), approved (lime green),
+review-blocked (red), merged (purple), closed (red), done (gray), paused (blue).
 
 If no directory is specified, the current directory is used.`,
 	Args: cobra.MaximumNArgs(1),
@@ -98,6 +99,7 @@ func collectBranchInfo(repoPath string) ui.BranchInfo {
 		cfg, _ := repoconfig.Load(gitDir)
 		if cfg != nil {
 			info.State = cfg.State
+			info.MergeURL = cfg.MergeURL
 			info.Remote = cfg.Remote
 		}
 	}

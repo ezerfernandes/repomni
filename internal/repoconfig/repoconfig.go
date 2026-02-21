@@ -13,10 +13,11 @@ import (
 // RepoConfig stores per-repo injection preferences inside .git/repoinjector/config.yaml.
 // It records which global config items and directory entries are relevant for a particular repo.
 type RepoConfig struct {
-	Version int              `yaml:"version"`
-	State   string           `yaml:"state,omitempty"`
-	Remote  bool             `yaml:"remote,omitempty"`
-	Items   []RepoItemConfig `yaml:"items"`
+	Version  int              `yaml:"version"`
+	State    string           `yaml:"state,omitempty"`
+	MergeURL string           `yaml:"merge_url,omitempty"`
+	Remote   bool             `yaml:"remote,omitempty"`
+	Items    []RepoItemConfig `yaml:"items"`
 }
 
 // RepoItemConfig records whether a global config item is enabled for this repo,
