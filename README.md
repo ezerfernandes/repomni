@@ -158,7 +158,9 @@ repoinjector eject --all /path/to/my-clones
 | `branch <name>` | Clone parent repo and create a new branch |
 | `set-state <state>` | Set workflow state for the current branch repo |
 | `branches [dir]` | List branch repos with their workflow states |
-| `sync [dir]` | Pull updates for all repos in a directory |
+| `sync [dir]` | Pull code updates and refresh PR/MR status |
+| `sync-code [dir]` | Pull updates for all repos in a directory |
+| `sync-state [dir]` | Update workflow states from PR/MR status |
 | `list [dir]` | List git repos in a directory (for scripting) |
 | `script` | Manage per-repo setup scripts |
 
@@ -295,15 +297,35 @@ Example output:
 
 ### `sync`
 
-Fetch and pull updates for all repos under a directory. Dirty repos are skipped unless `--autostash` is used. Diverged repos are always skipped.
+Run `sync-code` and `sync-state` together. First pulls git updates for all repos, then queries GitHub/GitLab for PR/MR status changes and updates workflow states.
 
 ```sh
 repoinjector sync
 repoinjector sync --dry-run
-repoinjector sync --autostash
-repoinjector sync -j 4
-repoinjector sync --strategy rebase
+repoinjector sync --autostash -j 4
 repoinjector sync --json
+```
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Show what would be done without making changes |
+| `--autostash` | Stash dirty working trees before pull |
+| `-j`, `--jobs` | Number of parallel sync workers (default: 1) |
+| `--no-fetch` | Skip `git fetch` (local status only) |
+| `--strategy` | Pull strategy: `ff-only` (default), `rebase`, `merge` |
+| `--json` | Output as JSON |
+
+### `sync-code`
+
+Fetch and pull updates for all repos under a directory. Dirty repos are skipped unless `--autostash` is used. Diverged repos are always skipped.
+
+```sh
+repoinjector sync-code
+repoinjector sync-code --dry-run
+repoinjector sync-code --autostash
+repoinjector sync-code -j 4
+repoinjector sync-code --strategy rebase
+repoinjector sync-code --json
 ```
 
 | Flag | Description |
@@ -313,6 +335,23 @@ repoinjector sync --json
 | `-j`, `--jobs` | Number of parallel sync workers (default: 1) |
 | `--no-fetch` | Skip `git fetch` (local status only) |
 | `--strategy` | Pull strategy: `ff-only` (default), `rebase`, `merge` |
+| `--json` | Output as JSON |
+
+### `sync-state`
+
+Query GitHub or GitLab for PR/MR status and update workflow states. Only repos with a stored merge URL and a review-related state (`review`, `approved`, `review-blocked`) are checked.
+
+Requires `gh` (GitHub) or `glab` (GitLab) to be installed and authenticated.
+
+```sh
+repoinjector sync-state
+repoinjector sync-state --dry-run
+repoinjector sync-state --json
+```
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Show what would change without updating configs |
 | `--json` | Output as JSON |
 
 ### `list`

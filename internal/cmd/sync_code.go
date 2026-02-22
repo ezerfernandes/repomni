@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var syncCmd = &cobra.Command{
-	Use:   "sync [directory]",
+var syncCodeCmd = &cobra.Command{
+	Use:   "sync-code [directory]",
 	Short: "Pull updates for git repos in a directory",
 	Long: `Fetch and pull updates for all git repositories that are immediate
 subdirectories of the target directory.
@@ -23,29 +23,29 @@ checked for upstream changes, and repos that are behind are pulled.
 Repos with dirty working trees are skipped unless --autostash is used.
 Diverged repos are always skipped (manual resolution required).`,
 	Args: cobra.MaximumNArgs(1),
-	RunE: runSync,
+	RunE: runSyncCode,
 }
 
 var (
-	syncDryRun    bool
-	syncAutoStash bool
-	syncJobs      int
-	syncNoFetch   bool
-	syncStrategy  string
-	syncJSON      bool
+	syncCodeDryRun    bool
+	syncCodeAutoStash bool
+	syncCodeJobs      int
+	syncCodeNoFetch   bool
+	syncCodeStrategy  string
+	syncCodeJSON      bool
 )
 
 func init() {
-	rootCmd.AddCommand(syncCmd)
-	syncCmd.Flags().BoolVar(&syncDryRun, "dry-run", false, "show what would be done without pulling")
-	syncCmd.Flags().BoolVar(&syncAutoStash, "autostash", false, "stash dirty working trees before pull")
-	syncCmd.Flags().IntVarP(&syncJobs, "jobs", "j", 1, "number of parallel sync workers")
-	syncCmd.Flags().BoolVar(&syncNoFetch, "no-fetch", false, "skip git fetch (local status only)")
-	syncCmd.Flags().StringVar(&syncStrategy, "strategy", "ff-only", "pull strategy: ff-only, rebase, merge")
-	syncCmd.Flags().BoolVar(&syncJSON, "json", false, "output as JSON")
+	rootCmd.AddCommand(syncCodeCmd)
+	syncCodeCmd.Flags().BoolVar(&syncCodeDryRun, "dry-run", false, "show what would be done without pulling")
+	syncCodeCmd.Flags().BoolVar(&syncCodeAutoStash, "autostash", false, "stash dirty working trees before pull")
+	syncCodeCmd.Flags().IntVarP(&syncCodeJobs, "jobs", "j", 1, "number of parallel sync workers")
+	syncCodeCmd.Flags().BoolVar(&syncCodeNoFetch, "no-fetch", false, "skip git fetch (local status only)")
+	syncCodeCmd.Flags().StringVar(&syncCodeStrategy, "strategy", "ff-only", "pull strategy: ff-only, rebase, merge")
+	syncCodeCmd.Flags().BoolVar(&syncCodeJSON, "json", false, "output as JSON")
 }
 
-func runSync(cmd *cobra.Command, args []string) error {
+func runSyncCode(cmd *cobra.Command, args []string) error {
 	target := "."
 	if len(args) > 0 {
 		target = args[0]
@@ -64,22 +64,22 @@ func runSync(cmd *cobra.Command, args []string) error {
 	}
 
 	opts := syncer.SyncOptions{
-		DryRun:    syncDryRun,
-		AutoStash: syncAutoStash,
-		Jobs:      syncJobs,
-		NoFetch:   syncNoFetch,
-		Strategy:  syncStrategy,
+		DryRun:    syncCodeDryRun,
+		AutoStash: syncCodeAutoStash,
+		Jobs:      syncCodeJobs,
+		NoFetch:   syncCodeNoFetch,
+		Strategy:  syncCodeStrategy,
 	}
 
 	results, summary := syncer.SyncAll(repos, opts)
 
-	if syncJSON {
+	if syncCodeJSON {
 		return ui.PrintSyncJSON(results, summary)
 	}
 
 	ui.PrintSyncResults(results, summary)
 
-	if syncDryRun {
+	if syncCodeDryRun {
 		fmt.Println("\nDry run \u2014 no changes were made.")
 	}
 
