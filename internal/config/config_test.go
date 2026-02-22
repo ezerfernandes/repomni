@@ -30,12 +30,120 @@ func TestEnabledItems(t *testing.T) {
 	}
 }
 
-func TestSaveAndLoad(t *testing.T) {
-	// Override config dir for testing
+func TestEnabledItems_NoneEnabled(t *testing.T) {
+	cfg := DefaultConfig()
+	for i := range cfg.Items {
+		cfg.Items[i].Enabled = false
+	}
+	enabled := cfg.EnabledItems()
+	if len(enabled) != 0 {
+		t.Errorf("expected 0 enabled items, got %d", len(enabled))
+	}
+}
+
+func TestEnabledItems_AllEnabled(t *testing.T) {
+	cfg := DefaultConfig()
+	enabled := cfg.EnabledItems()
+	if len(enabled) != len(cfg.Items) {
+		t.Errorf("expected %d enabled items, got %d", len(cfg.Items), len(enabled))
+	}
+}
+
+func TestDefaultItems_Content(t *testing.T) {
+	items := DefaultItems()
+
+	expected := []struct {
+		itemType   ItemType
+		sourcePath string
+		targetPath string
+	}{
+		{ItemTypeDirectory, "skills", ".claude/skills"},
+		{ItemTypeFile, "hooks.json", ".claude/hooks.json"},
+		{ItemTypeFile, ".envrc", ".envrc"},
+		{ItemTypeFile, ".env", ".env"},
+	}
+
+	if len(items) != len(expected) {
+		t.Fatalf("expected %d default items, got %d", len(expected), len(items))
+	}
+
+	for i, want := range expected {
+		got := items[i]
+		if got.Type != want.itemType {
+			t.Errorf("item[%d] type = %q, want %q", i, got.Type, want.itemType)
+		}
+		if got.SourcePath != want.sourcePath {
+			t.Errorf("item[%d] source = %q, want %q", i, got.SourcePath, want.sourcePath)
+		}
+		if got.TargetPath != want.targetPath {
+			t.Errorf("item[%d] target = %q, want %q", i, got.TargetPath, want.targetPath)
+		}
+		if !got.Enabled {
+			t.Errorf("item[%d] should be enabled by default", i)
+		}
+	}
+}
+
+func TestLoad_NoFile(t *testing.T) {
 	tmpDir := t.TempDir()
-	origFn := os.Getenv("XDG_CONFIG_HOME")
-	os.Setenv("XDG_CONFIG_HOME", tmpDir)
-	defer os.Setenv("XDG_CONFIG_HOME", origFn)
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpDir, ".config"))
+
+	_, err := Load()
+	if err == nil {
+		t.Error("Load without saved config should return an error")
+	}
+}
+
+func TestLoad_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpDir, ".config"))
+
+	// Create the config directory and write invalid YAML
+	configDir := filepath.Join(tmpDir, ".config", "repoinjector")
+	os.MkdirAll(configDir, 0755)
+	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("{{invalid yaml:::"), 0644)
+
+	_, err := Load()
+	if err == nil {
+		t.Error("Load should return an error for invalid YAML")
+	}
+}
+
+func TestConfigPath_Consistency(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpDir, ".config"))
+
+	path1, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath failed: %v", err)
+	}
+	path2, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath second call failed: %v", err)
+	}
+	if path1 != path2 {
+		t.Errorf("ConfigPath should return consistent path, got %q and %q", path1, path2)
+	}
+}
+
+func TestDefaultConfig_HasSourceDir(t *testing.T) {
+	cfg := DefaultConfig()
+	// SourceDir is initially empty in DefaultConfig
+	if cfg.SourceDir != "" {
+		t.Errorf("expected empty SourceDir in default config, got %q", cfg.SourceDir)
+	}
+}
+
+func TestSaveAndLoad(t *testing.T) {
+	// Override HOME so os.UserConfigDir() resolves to a temp location.
+	// On macOS UserConfigDir returns $HOME/Library/Application Support,
+	// on Linux it uses $XDG_CONFIG_HOME or $HOME/.config.
+	tmpDir := t.TempDir()
+	t.Setenv("HOME", tmpDir)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(tmpDir, ".config"))
 
 	cfg := DefaultConfig()
 	cfg.SourceDir = "/some/test/path"
@@ -44,7 +152,11 @@ func TestSaveAndLoad(t *testing.T) {
 		t.Fatalf("Save failed: %v", err)
 	}
 
-	path := filepath.Join(tmpDir, "repoinjector", "config.yaml")
+	// Verify the file was created at the expected path
+	path, err := ConfigPath()
+	if err != nil {
+		t.Fatalf("ConfigPath failed: %v", err)
+	}
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("config file not created at %s", path)
 	}

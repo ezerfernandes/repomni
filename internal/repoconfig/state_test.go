@@ -38,6 +38,21 @@ func TestValidateState_InvalidChars(t *testing.T) {
 	}
 }
 
+func TestKnownStates_Count(t *testing.T) {
+	states := KnownStates()
+	if len(states) != 8 {
+		t.Errorf("expected 8 known states, got %d", len(states))
+	}
+}
+
+func TestIsKnownState_AllKnown(t *testing.T) {
+	for _, s := range KnownStates() {
+		if !IsKnownState(string(s)) {
+			t.Errorf("IsKnownState(%q) should return true", s)
+		}
+	}
+}
+
 func TestIsKnownState(t *testing.T) {
 	if !IsKnownState("active") {
 		t.Error("active should be a known state")
@@ -56,6 +71,50 @@ func TestIsKnownState(t *testing.T) {
 	}
 	if IsKnownState("") {
 		t.Error("empty should NOT be a known state")
+	}
+}
+
+func TestValidateState_TooLong(t *testing.T) {
+	long := "a-very-long-state-name-that-exceeds-reasonable-limits-aaaaaaaaaa"
+	// Should still pass if it matches the regex pattern
+	err := ValidateState(long)
+	// The function only checks for lowercase alphanumeric and hyphens
+	if err != nil {
+		t.Errorf("ValidateState(%q) should pass (matches pattern): %v", long, err)
+	}
+}
+
+func TestValidateState_SingleChar(t *testing.T) {
+	if err := ValidateState("a"); err != nil {
+		t.Errorf("ValidateState(\"a\") should pass: %v", err)
+	}
+}
+
+func TestValidateState_WithNumbers(t *testing.T) {
+	valid := []string{"v1", "phase-2", "123", "a1b2c3"}
+	for _, s := range valid {
+		if err := ValidateState(s); err != nil {
+			t.Errorf("ValidateState(%q) should pass: %v", s, err)
+		}
+	}
+}
+
+func TestValidateState_SpecialChars(t *testing.T) {
+	invalid := []string{"hello_world", "foo.bar", "a@b", "tab\there", "new\nline"}
+	for _, s := range invalid {
+		if err := ValidateState(s); err == nil {
+			t.Errorf("ValidateState(%q) should fail", s)
+		}
+	}
+}
+
+func TestIsKnownState_NotCaseSensitive(t *testing.T) {
+	// IsKnownState should be case-sensitive (only lowercase known states)
+	if IsKnownState("Active") {
+		t.Error("IsKnownState should be case-sensitive")
+	}
+	if IsKnownState("REVIEW") {
+		t.Error("IsKnownState should be case-sensitive")
 	}
 }
 

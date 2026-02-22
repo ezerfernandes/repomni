@@ -257,6 +257,193 @@ func TestSyncAllParallel(t *testing.T) {
 	}
 }
 
+func TestCheckStatusDetachedHead(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+	run(t, cloneDir, "git", "checkout", "--detach", "HEAD")
+
+	s := CheckStatus(cloneDir, true)
+	if s.State != StateError {
+		t.Errorf("expected error state for detached HEAD, got %s: %s", s.State, s.Detail)
+	}
+}
+
+func TestCheckStatusNotGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	s := CheckStatus(dir, true)
+	if s.State != StateError {
+		t.Errorf("expected error state for non-git dir, got %s: %s", s.State, s.Detail)
+	}
+}
+
+func TestCheckStatusFields(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+
+	s := CheckStatus(cloneDir, true)
+	if s.Path != cloneDir {
+		t.Errorf("expected path=%q, got %q", cloneDir, s.Path)
+	}
+	if s.Name != filepath.Base(cloneDir) {
+		t.Errorf("expected name=%q, got %q", filepath.Base(cloneDir), s.Name)
+	}
+	if s.Upstream == "" {
+		t.Error("expected non-empty upstream")
+	}
+	if s.Ahead != 0 || s.Behind != 0 {
+		t.Errorf("expected ahead=0, behind=0, got %d/%d", s.Ahead, s.Behind)
+	}
+}
+
+func TestCheckStatusDirtyAndBehind(t *testing.T) {
+	bareDir, cloneDir := initBareCloneEnv(t)
+	pushCommitFromSecondClone(t, bareDir)
+	run(t, cloneDir, "git", "fetch")
+	writeFile(t, filepath.Join(cloneDir, "dirty.txt"), "uncommitted")
+
+	s := CheckStatus(cloneDir, true)
+	if s.State != StateDirty {
+		t.Errorf("expected dirty (behind + dirty), got %s: %s", s.State, s.Detail)
+	}
+	if !s.Dirty {
+		t.Error("expected Dirty=true")
+	}
+	if s.Behind != 1 {
+		t.Errorf("expected behind=1, got %d", s.Behind)
+	}
+}
+
+func TestSyncRepoSkipsAhead(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+	writeFile(t, filepath.Join(cloneDir, "local.txt"), "local")
+	run(t, cloneDir, "git", "add", ".")
+	run(t, cloneDir, "git", "commit", "-m", "local commit")
+
+	r := SyncRepo(cloneDir, SyncOptions{NoFetch: true})
+	if r.Action != "skipped" {
+		t.Errorf("expected skipped for ahead repo, got %s: %s", r.Action, r.PostDetail)
+	}
+}
+
+func TestSyncRepoDryRunDirty(t *testing.T) {
+	bareDir, cloneDir := initBareCloneEnv(t)
+	pushCommitFromSecondClone(t, bareDir)
+	run(t, cloneDir, "git", "fetch")
+	writeFile(t, filepath.Join(cloneDir, "dirty.txt"), "uncommitted")
+
+	r := SyncRepo(cloneDir, SyncOptions{NoFetch: true, DryRun: true})
+	if r.Action != "dry-run" {
+		t.Errorf("expected dry-run, got %s: %s", r.Action, r.PostDetail)
+	}
+}
+
+func TestSyncRepoDryRunDirtyAutoStash(t *testing.T) {
+	bareDir, cloneDir := initBareCloneEnv(t)
+	pushCommitFromSecondClone(t, bareDir)
+	run(t, cloneDir, "git", "fetch")
+	writeFile(t, filepath.Join(cloneDir, "dirty.txt"), "uncommitted")
+
+	r := SyncRepo(cloneDir, SyncOptions{NoFetch: true, DryRun: true, AutoStash: true})
+	if r.Action != "dry-run" {
+		t.Errorf("expected dry-run, got %s: %s", r.Action, r.PostDetail)
+	}
+}
+
+func TestSyncRepoDryRunDiverged(t *testing.T) {
+	bareDir, cloneDir := initBareCloneEnv(t)
+	pushCommitFromSecondClone(t, bareDir)
+	writeFile(t, filepath.Join(cloneDir, "local.txt"), "local")
+	run(t, cloneDir, "git", "add", ".")
+	run(t, cloneDir, "git", "commit", "-m", "local")
+	run(t, cloneDir, "git", "fetch")
+
+	r := SyncRepo(cloneDir, SyncOptions{NoFetch: true, DryRun: true})
+	if r.Action != "dry-run" {
+		t.Errorf("expected dry-run, got %s: %s", r.Action, r.PostDetail)
+	}
+}
+
+func TestSyncRepoNoUpstreamSkips(t *testing.T) {
+	repo := t.TempDir()
+	run(t, "", "git", "init", repo)
+	writeFile(t, filepath.Join(repo, "file.txt"), "content")
+	run(t, repo, "git", "add", ".")
+	run(t, repo, "git", "commit", "-m", "init")
+
+	r := SyncRepo(repo, SyncOptions{NoFetch: true})
+	if r.Action != "skipped" {
+		t.Errorf("expected skipped for no-upstream, got %s: %s", r.Action, r.PostDetail)
+	}
+}
+
+func TestSyncRepoStrategy(t *testing.T) {
+	bareDir, cloneDir := initBareCloneEnv(t)
+	pushCommitFromSecondClone(t, bareDir)
+
+	r := SyncRepo(cloneDir, SyncOptions{NoFetch: false, Strategy: "rebase"})
+	if r.Action != "pulled" {
+		t.Errorf("expected pulled with rebase strategy, got %s: %s", r.Action, r.PostDetail)
+	}
+}
+
+func TestSyncAllEmpty(t *testing.T) {
+	results, summary := SyncAll(nil, SyncOptions{})
+	if len(results) != 0 {
+		t.Errorf("expected 0 results, got %d", len(results))
+	}
+	if summary.Total != 0 {
+		t.Errorf("expected total=0, got %d", summary.Total)
+	}
+}
+
+func TestSyncAllDefaultJobs(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+
+	// Jobs=0 should default to 1 internally
+	results, summary := SyncAll([]string{cloneDir}, SyncOptions{NoFetch: true, Jobs: 0})
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if summary.Total != 1 {
+		t.Errorf("expected total=1, got %d", summary.Total)
+	}
+}
+
+func TestSyncAllSummary(t *testing.T) {
+	bareDir, behindClone := initBareCloneEnv(t)
+	pushCommitFromSecondClone(t, bareDir)
+
+	_, currentClone := initBareCloneEnv(t)
+
+	results, summary := SyncAll([]string{behindClone, currentClone}, SyncOptions{NoFetch: false, Jobs: 1})
+	if len(results) != 2 {
+		t.Fatalf("expected 2 results, got %d", len(results))
+	}
+	if summary.Pulled != 1 {
+		t.Errorf("expected pulled=1, got %d", summary.Pulled)
+	}
+	if summary.Current != 1 {
+		t.Errorf("expected current=1, got %d", summary.Current)
+	}
+}
+
+func TestStatusAllEmpty(t *testing.T) {
+	statuses := StatusAll(nil, true, 1)
+	if len(statuses) != 0 {
+		t.Errorf("expected 0 statuses, got %d", len(statuses))
+	}
+}
+
+func TestStatusAllDefaultJobs(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+
+	statuses := StatusAll([]string{cloneDir}, true, 0)
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].State != StateCurrent {
+		t.Errorf("expected current, got %s", statuses[0].State)
+	}
+}
+
 func TestStatusAll(t *testing.T) {
 	parent := t.TempDir()
 	var repos []string

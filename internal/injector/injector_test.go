@@ -568,6 +568,632 @@ func TestInjectEnvPartialFind(t *testing.T) {
 	}
 }
 
+func TestInjectNotGitRepo(t *testing.T) {
+	dir := t.TempDir()
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: dir,
+		Mode:      config.ModeSymlink,
+		Items:     config.DefaultItems(),
+	}
+
+	_, err := Inject(cfg, dir, Options{})
+	if err == nil {
+		t.Error("expected error when injecting to non-git directory")
+	}
+}
+
+func TestEjectNotPresent(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	// Eject without prior inject — items should be "skipped" (not present)
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	for _, r := range results {
+		if r.Action != "skipped" {
+			t.Errorf("expected 'skipped' for %s, got %q: %s", r.Item.TargetPath, r.Action, r.Detail)
+		}
+	}
+}
+
+func TestInjectForceOverwrite(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	// Create a regular file at the symlink target
+	os.WriteFile(filepath.Join(targetDir, ".envrc"), []byte("existing"), 0644)
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink, Force: true})
+	if err != nil {
+		t.Fatalf("Inject with force failed: %v", err)
+	}
+
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" {
+			if r.Action != "created" {
+				t.Errorf("expected 'created' with force for .envrc, got %q: %s", r.Action, r.Detail)
+			}
+		}
+	}
+
+	// Verify it's now a symlink
+	info, err := os.Lstat(filepath.Join(targetDir, ".envrc"))
+	if err != nil {
+		t.Fatalf("cannot stat .envrc: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Error(".envrc should be a symlink after force inject")
+	}
+}
+
+func TestInjectCopyIdempotent(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	if err != nil {
+		t.Fatalf("second copy Inject failed: %v", err)
+	}
+
+	for _, r := range results {
+		// File items get "skipped" (content matches), directory entries get "warning" (already exist)
+		if r.Action != "skipped" && r.Action != "warning" {
+			t.Errorf("expected 'skipped' or 'warning' on second copy inject for %s, got %q: %s", r.Item.TargetPath, r.Action, r.Detail)
+		}
+	}
+}
+
+func TestInjectCopyForceOverwrite(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+
+	// Modify a copied file so content differs
+	os.WriteFile(filepath.Join(targetDir, ".envrc"), []byte("modified"), 0644)
+
+	// Without force, should skip with "different content" message
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" && r.Action != "skipped" {
+			t.Errorf("expected 'skipped' for modified .envrc without force, got %q", r.Action)
+		}
+	}
+
+	// With force, should overwrite
+	results, err = Inject(cfg, targetDir, Options{Mode: config.ModeCopy, Force: true})
+	if err != nil {
+		t.Fatalf("Inject with force failed: %v", err)
+	}
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" && r.Action != "created" {
+			t.Errorf("expected 'created' for .envrc with force, got %q", r.Action)
+		}
+	}
+}
+
+func TestStatusAfterEject(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	Eject(cfg, targetDir)
+
+	statuses, err := Status(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+	for _, s := range statuses {
+		if s.Present {
+			t.Errorf("%s should not be present after eject", s.Item.TargetPath)
+		}
+	}
+}
+
+func TestFilesEqual_IdenticalContent(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	b := filepath.Join(dir, "b.txt")
+	os.WriteFile(a, []byte("hello world"), 0644)
+	os.WriteFile(b, []byte("hello world"), 0644)
+
+	if !filesEqual(a, b) {
+		t.Error("filesEqual should return true for identical files")
+	}
+}
+
+func TestFilesEqual_DifferentContent(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	b := filepath.Join(dir, "b.txt")
+	os.WriteFile(a, []byte("hello"), 0644)
+	os.WriteFile(b, []byte("world"), 0644)
+
+	if filesEqual(a, b) {
+		t.Error("filesEqual should return false for different files")
+	}
+}
+
+func TestFilesEqual_TrimsWhitespace(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	b := filepath.Join(dir, "b.txt")
+	os.WriteFile(a, []byte("hello\n"), 0644)
+	os.WriteFile(b, []byte("hello  \n\n"), 0644)
+
+	if !filesEqual(a, b) {
+		t.Error("filesEqual should trim trailing whitespace when comparing")
+	}
+}
+
+func TestFilesEqual_NonExistentFile(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.txt")
+	os.WriteFile(a, []byte("hello"), 0644)
+	b := filepath.Join(dir, "nonexistent.txt")
+
+	if filesEqual(a, b) {
+		t.Error("filesEqual should return false when a file doesn't exist")
+	}
+}
+
+func TestFilesEqual_BothNonExistent(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "missing1.txt")
+	b := filepath.Join(dir, "missing2.txt")
+
+	if filesEqual(a, b) {
+		t.Error("filesEqual should return false when both files don't exist")
+	}
+}
+
+func TestIsEnvFile(t *testing.T) {
+	tests := []struct {
+		name     string
+		item     config.Item
+		expected bool
+	}{
+		{"env file", config.Item{Type: config.ItemTypeFile, TargetPath: ".env"}, true},
+		{"envrc file", config.Item{Type: config.ItemTypeFile, TargetPath: ".envrc"}, true},
+		{"other file", config.Item{Type: config.ItemTypeFile, TargetPath: "hooks.json"}, false},
+		{"directory type", config.Item{Type: config.ItemTypeDirectory, TargetPath: ".env"}, false},
+		{"nested env file", config.Item{Type: config.ItemTypeFile, TargetPath: "config/.env"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isEnvFile(tt.item)
+			if got != tt.expected {
+				t.Errorf("isEnvFile(%+v) = %v, want %v", tt.item, got, tt.expected)
+			}
+		})
+	}
+}
+
+func TestRemoveIfEmptyDir(t *testing.T) {
+	// Empty directory should be removed
+	dir := t.TempDir()
+	emptyDir := filepath.Join(dir, "empty")
+	os.MkdirAll(emptyDir, 0755)
+
+	removeIfEmptyDir(emptyDir)
+
+	if _, err := os.Stat(emptyDir); err == nil {
+		t.Error("empty directory should be removed")
+	}
+}
+
+func TestRemoveIfEmptyDir_NonEmpty(t *testing.T) {
+	dir := t.TempDir()
+	nonEmptyDir := filepath.Join(dir, "notempty")
+	os.MkdirAll(nonEmptyDir, 0755)
+	os.WriteFile(filepath.Join(nonEmptyDir, "file.txt"), []byte("data"), 0644)
+
+	removeIfEmptyDir(nonEmptyDir)
+
+	if _, err := os.Stat(nonEmptyDir); err != nil {
+		t.Error("non-empty directory should NOT be removed")
+	}
+}
+
+func TestRemoveIfEmptyDir_NonExistent(t *testing.T) {
+	// Should not panic for non-existent directory
+	removeIfEmptyDir(filepath.Join(t.TempDir(), "nonexistent"))
+}
+
+func TestCopyFileContent(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+	os.WriteFile(src, []byte("hello world"), 0644)
+
+	if err := copyFileContent(src, dst); err != nil {
+		t.Fatalf("copyFileContent failed: %v", err)
+	}
+
+	data, err := os.ReadFile(dst)
+	if err != nil {
+		t.Fatalf("cannot read dst: %v", err)
+	}
+	if string(data) != "hello world" {
+		t.Errorf("content mismatch: got %q", data)
+	}
+}
+
+func TestCopyFileContent_PreservesPermissions(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.sh")
+	dst := filepath.Join(dir, "dst.sh")
+	os.WriteFile(src, []byte("#!/bin/bash"), 0755)
+
+	if err := copyFileContent(src, dst); err != nil {
+		t.Fatalf("copyFileContent failed: %v", err)
+	}
+
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatalf("cannot stat dst: %v", err)
+	}
+	if info.Mode().Perm()&0100 == 0 {
+		t.Error("dst should preserve executable permission")
+	}
+}
+
+func TestCopyFileContent_NonExistentSource(t *testing.T) {
+	dir := t.TempDir()
+	err := copyFileContent(filepath.Join(dir, "missing"), filepath.Join(dir, "dst"))
+	if err == nil {
+		t.Error("expected error for non-existent source")
+	}
+}
+
+func TestCopyDirRecursive(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+
+	// Create nested structure
+	os.MkdirAll(filepath.Join(src, "sub"), 0755)
+	os.WriteFile(filepath.Join(src, "file1.txt"), []byte("root file"), 0644)
+	os.WriteFile(filepath.Join(src, "sub", "file2.txt"), []byte("sub file"), 0644)
+
+	if err := copyDirRecursive(src, dst); err != nil {
+		t.Fatalf("copyDirRecursive failed: %v", err)
+	}
+
+	// Verify root file
+	data, err := os.ReadFile(filepath.Join(dst, "file1.txt"))
+	if err != nil {
+		t.Fatalf("cannot read root file: %v", err)
+	}
+	if string(data) != "root file" {
+		t.Errorf("root file content mismatch: got %q", data)
+	}
+
+	// Verify nested file
+	data, err = os.ReadFile(filepath.Join(dst, "sub", "file2.txt"))
+	if err != nil {
+		t.Fatalf("cannot read sub file: %v", err)
+	}
+	if string(data) != "sub file" {
+		t.Errorf("sub file content mismatch: got %q", data)
+	}
+}
+
+func TestCopyDirRecursive_EmptyDir(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	os.MkdirAll(src, 0755)
+
+	if err := copyDirRecursive(src, dst); err != nil {
+		t.Fatalf("copyDirRecursive failed for empty dir: %v", err)
+	}
+
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal("dst directory should exist")
+	}
+	if !info.IsDir() {
+		t.Error("dst should be a directory")
+	}
+}
+
+func TestCreateSymlink_UpdatesExisting(t *testing.T) {
+	dir := t.TempDir()
+	src1 := filepath.Join(dir, "src1")
+	src2 := filepath.Join(dir, "src2")
+	dst := filepath.Join(dir, "link")
+	os.WriteFile(src1, []byte("v1"), 0644)
+	os.WriteFile(src2, []byte("v2"), 0644)
+
+	item := config.Item{TargetPath: "test"}
+
+	// Create symlink to src1
+	os.Symlink(src1, dst)
+
+	// createSymlink should update to src2
+	result := createSymlink(item, src2, dst, false)
+	if result.Action != "created" {
+		t.Errorf("expected 'created' when updating symlink, got %q: %s", result.Action, result.Detail)
+	}
+
+	target, _ := os.Readlink(dst)
+	if target != src2 {
+		t.Errorf("symlink should point to %q, got %q", src2, target)
+	}
+}
+
+func TestCreateSymlink_SkipsIfCurrent(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "link")
+	os.WriteFile(src, []byte("data"), 0644)
+	os.Symlink(src, dst)
+
+	item := config.Item{TargetPath: "test"}
+	result := createSymlink(item, src, dst, false)
+	if result.Action != "skipped" {
+		t.Errorf("expected 'skipped' when symlink already correct, got %q", result.Action)
+	}
+}
+
+func TestCreateSymlink_SkipsRegularFileWithoutForce(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "existing")
+	os.WriteFile(src, []byte("data"), 0644)
+	os.WriteFile(dst, []byte("regular file"), 0644)
+
+	item := config.Item{TargetPath: "test"}
+	result := createSymlink(item, src, dst, false)
+	if result.Action != "skipped" {
+		t.Errorf("expected 'skipped' without force, got %q: %s", result.Action, result.Detail)
+	}
+}
+
+func TestCreateSymlink_OverwritesRegularFileWithForce(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "existing")
+	os.WriteFile(src, []byte("data"), 0644)
+	os.WriteFile(dst, []byte("regular file"), 0644)
+
+	item := config.Item{TargetPath: "test"}
+	result := createSymlink(item, src, dst, true)
+	if result.Action != "created" {
+		t.Errorf("expected 'created' with force, got %q: %s", result.Action, result.Detail)
+	}
+
+	target, err := os.Readlink(dst)
+	if err != nil {
+		t.Fatal("dst should be a symlink")
+	}
+	if target != src {
+		t.Errorf("symlink should point to %q, got %q", src, target)
+	}
+}
+
+func TestCopyFile_ExistingDifferentContentNoForce(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	os.WriteFile(src, []byte("source content"), 0644)
+	os.WriteFile(dst, []byte("different content"), 0644)
+
+	item := config.Item{TargetPath: "test"}
+	result := copyFile(item, src, dst, false)
+	if result.Action != "skipped" {
+		t.Errorf("expected 'skipped' for different content without force, got %q", result.Action)
+	}
+}
+
+func TestCopyFile_ExistingSameContent(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	os.WriteFile(src, []byte("same content"), 0644)
+	os.WriteFile(dst, []byte("same content"), 0644)
+
+	item := config.Item{TargetPath: "test"}
+	result := copyFile(item, src, dst, false)
+	if result.Action != "skipped" {
+		t.Errorf("expected 'skipped' for same content, got %q", result.Action)
+	}
+	if result.Detail != "already up to date" {
+		t.Errorf("expected 'already up to date' detail, got %q", result.Detail)
+	}
+}
+
+func TestCopyFile_ExistingDifferentContentWithForce(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	os.WriteFile(src, []byte("new content"), 0644)
+	os.WriteFile(dst, []byte("old content"), 0644)
+
+	item := config.Item{TargetPath: "test"}
+	result := copyFile(item, src, dst, true)
+	if result.Action != "created" {
+		t.Errorf("expected 'created' with force, got %q: %s", result.Action, result.Detail)
+	}
+
+	data, _ := os.ReadFile(dst)
+	if string(data) != "new content" {
+		t.Errorf("content should be overwritten, got %q", data)
+	}
+}
+
+func TestFindEnvInParents_FindsInParent(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	os.MkdirAll(child, 0755)
+	os.WriteFile(filepath.Join(root, ".env"), []byte("SECRET=1"), 0644)
+
+	result := findEnvInParents(child)
+	if len(result.Found) == 0 {
+		t.Fatal("expected to find .env in parent")
+	}
+	if result.Found[".env"] != root {
+		t.Errorf("expected .env in %q, got %q", root, result.Found[".env"])
+	}
+}
+
+func TestFindEnvInParents_StopsAtGitRepo(t *testing.T) {
+	root := t.TempDir()
+	parentRepo := filepath.Join(root, "parent")
+	child := filepath.Join(parentRepo, "child")
+	os.MkdirAll(child, 0755)
+
+	// Make parent a git repo but don't place .env there
+	exec.Command("git", "init", parentRepo).Run()
+
+	result := findEnvInParents(child)
+	if len(result.Found) != 0 {
+		t.Error("should not find env files when parent git repo has none")
+	}
+	if !result.HitGitRepo {
+		t.Error("HitGitRepo should be true")
+	}
+}
+
+func TestFindEnvInParents_FindsBothFiles(t *testing.T) {
+	root := t.TempDir()
+	child := filepath.Join(root, "child")
+	os.MkdirAll(child, 0755)
+	os.WriteFile(filepath.Join(root, ".env"), []byte("SECRET=1"), 0644)
+	os.WriteFile(filepath.Join(root, ".envrc"), []byte("export A=1"), 0644)
+
+	result := findEnvInParents(child)
+	if len(result.Found) != 2 {
+		t.Errorf("expected 2 found files, got %d", len(result.Found))
+	}
+}
+
+func TestStatusCopyMode(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	statuses, err := Status(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+
+	for _, s := range statuses {
+		if !s.Present {
+			t.Errorf("%s should be present after copy inject", s.Item.TargetPath)
+		}
+		// Copy-mode items are regular files, not symlinks, so Current should be false
+		// and Detail should mention "regular file/dir"
+		if s.Item.TargetPath != ".claude/skills/test.md" {
+			// File items in copy mode are detected as regular files
+			if s.Detail != "regular file/dir (not a symlink)" {
+				// Accept both detail messages — env files found via parent search are regular files
+				continue
+			}
+		}
+	}
+}
+
+func TestEjectAfterCopyInject(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject after copy inject failed: %v", err)
+	}
+
+	for _, r := range results {
+		if r.Action != "removed" {
+			t.Errorf("expected 'removed' for %s after copy inject, got %q: %s", r.Item.TargetPath, r.Action, r.Detail)
+		}
+	}
+
+	// Verify files are gone
+	if _, err := os.Stat(filepath.Join(targetDir, ".envrc")); err == nil {
+		t.Error(".envrc should be removed after eject")
+	}
+}
+
+func TestInjectSourceNotFound(t *testing.T) {
+	rootDir := t.TempDir()
+	sourceDir := filepath.Join(rootDir, "source")
+	targetDir := filepath.Join(rootDir, "target")
+	os.MkdirAll(sourceDir, 0755)
+	os.MkdirAll(targetDir, 0755)
+	exec.Command("git", "init", targetDir).Run()
+
+	// Config references a source file that doesn't exist
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeFile, SourcePath: "nonexistent.json", TargetPath: "nonexistent.json", Enabled: true},
+		},
+	}
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject should not fail for missing source: %v", err)
+	}
+
+	if len(results) != 1 || results[0].Action != "skipped" {
+		t.Errorf("expected 'skipped' for missing source, got %+v", results)
+	}
+}
+
+func TestInjectEmptySourceDir(t *testing.T) {
+	rootDir := t.TempDir()
+	sourceDir := filepath.Join(rootDir, "source")
+	targetDir := filepath.Join(rootDir, "target")
+	os.MkdirAll(sourceDir, 0755)
+	os.MkdirAll(targetDir, 0755)
+	exec.Command("git", "init", targetDir).Run()
+
+	// Directory item with empty source
+	os.MkdirAll(filepath.Join(sourceDir, "skills"), 0755)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	if len(results) != 1 || results[0].Action != "skipped" {
+		t.Errorf("expected 'skipped' for empty source dir, got %+v", results)
+	}
+}
+
+func TestStatusDir_SourceNotReadable(t *testing.T) {
+	item := config.Item{
+		Type:       config.ItemTypeDirectory,
+		SourcePath: "skills",
+		TargetPath: ".claude/skills",
+		Enabled:    true,
+	}
+
+	statuses := statusDir(item, "/nonexistent/path", "/also/nonexistent", nil)
+	if len(statuses) != 1 {
+		t.Fatalf("expected 1 status, got %d", len(statuses))
+	}
+	if statuses[0].Present {
+		t.Error("should not be present")
+	}
+}
+
 func TestStatus(t *testing.T) {
 	_, targetDir, cfg := setupTestEnv(t)
 

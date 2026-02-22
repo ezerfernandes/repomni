@@ -196,6 +196,241 @@ func TestLoad_NonExistent(t *testing.T) {
 	}
 }
 
+func TestEnabledTargetPaths(t *testing.T) {
+	repoCfg := &RepoConfig{
+		Version: 1,
+		Items: []RepoItemConfig{
+			{TargetPath: ".claude/skills", Enabled: true},
+			{TargetPath: ".claude/hooks.json", Enabled: false},
+			{TargetPath: ".envrc", Enabled: true},
+			{TargetPath: ".env", Enabled: false},
+		},
+	}
+
+	paths := repoCfg.EnabledTargetPaths()
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 enabled paths, got %d", len(paths))
+	}
+	if !paths[".claude/skills"] {
+		t.Error("expected .claude/skills to be enabled")
+	}
+	if !paths[".envrc"] {
+		t.Error("expected .envrc to be enabled")
+	}
+	if paths[".claude/hooks.json"] {
+		t.Error("hooks.json should NOT be enabled")
+	}
+	if paths[".env"] {
+		t.Error(".env should NOT be enabled")
+	}
+}
+
+func TestEnabledTargetPaths_NoneEnabled(t *testing.T) {
+	repoCfg := &RepoConfig{
+		Version: 1,
+		Items: []RepoItemConfig{
+			{TargetPath: ".envrc", Enabled: false},
+			{TargetPath: ".env", Enabled: false},
+		},
+	}
+
+	paths := repoCfg.EnabledTargetPaths()
+	if len(paths) != 0 {
+		t.Errorf("expected 0 enabled paths, got %d", len(paths))
+	}
+}
+
+func TestEnabledTargetPaths_Empty(t *testing.T) {
+	repoCfg := &RepoConfig{Version: 1}
+	paths := repoCfg.EnabledTargetPaths()
+	if len(paths) != 0 {
+		t.Errorf("expected 0 enabled paths for empty items, got %d", len(paths))
+	}
+}
+
+func TestSaveAndLoad_WithMergeURL(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	original := &RepoConfig{
+		Version:  1,
+		State:    "review",
+		MergeURL: "https://github.com/org/repo/pull/42",
+		Items: []RepoItemConfig{
+			{TargetPath: ".envrc", Enabled: true},
+		},
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.MergeURL != "https://github.com/org/repo/pull/42" {
+		t.Errorf("MergeURL mismatch: got %q, want %q", loaded.MergeURL, original.MergeURL)
+	}
+	if loaded.State != "review" {
+		t.Errorf("State mismatch: got %q, want %q", loaded.State, "review")
+	}
+}
+
+func TestSaveAndLoad_WithRemote(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	original := &RepoConfig{
+		Version: 1,
+		Remote:  true,
+		Items: []RepoItemConfig{
+			{TargetPath: ".envrc", Enabled: true},
+		},
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if !loaded.Remote {
+		t.Error("Remote should be true")
+	}
+}
+
+func TestLoad_InvalidYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	configDir := filepath.Join(gitDir, "repoinjector")
+	os.MkdirAll(configDir, 0755)
+	os.WriteFile(filepath.Join(configDir, "config.yaml"), []byte("{{invalid: yaml:::"), 0644)
+
+	_, err := Load(gitDir)
+	if err == nil {
+		t.Error("Load should return an error for invalid YAML")
+	}
+}
+
+func TestFilterGlobalConfig_PreservesEntries(t *testing.T) {
+	globalCfg := &config.Config{
+		Version:   1,
+		SourceDir: "/tmp/source",
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	repoCfg := &RepoConfig{
+		Version: 1,
+		Items: []RepoItemConfig{
+			{TargetPath: ".claude/skills", Enabled: true, Entries: []string{"hello-world", "web-browser"}},
+		},
+	}
+
+	filtered := repoCfg.FilterGlobalConfig(globalCfg)
+
+	// The filtered config should have the directory item
+	if len(filtered.Items) != 1 {
+		t.Fatalf("expected 1 filtered item, got %d", len(filtered.Items))
+	}
+	if filtered.Items[0].TargetPath != ".claude/skills" {
+		t.Errorf("unexpected target path: %s", filtered.Items[0].TargetPath)
+	}
+}
+
+func TestFilterGlobalConfig_NoMatchingItems(t *testing.T) {
+	globalCfg := &config.Config{
+		Version:   1,
+		SourceDir: "/tmp/source",
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeFile, SourcePath: ".envrc", TargetPath: ".envrc", Enabled: true},
+		},
+	}
+
+	// Repo config references items not in global config
+	repoCfg := &RepoConfig{
+		Version: 1,
+		Items: []RepoItemConfig{
+			{TargetPath: ".nonexistent", Enabled: true},
+		},
+	}
+
+	filtered := repoCfg.FilterGlobalConfig(globalCfg)
+	if len(filtered.Items) != 0 {
+		t.Errorf("expected 0 filtered items, got %d", len(filtered.Items))
+	}
+}
+
+func TestToSelectedEntries_DisabledSkipped(t *testing.T) {
+	repoCfg := &RepoConfig{
+		Version: 1,
+		Items: []RepoItemConfig{
+			{TargetPath: ".claude/skills", Enabled: false, Entries: []string{"hello-world"}},
+		},
+	}
+
+	selected := repoCfg.ToSelectedEntries()
+	if _, ok := selected[".claude/skills"]; ok {
+		t.Error("disabled items should not appear in ToSelectedEntries")
+	}
+}
+
+func TestSaveAndLoad_EmptyItems(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	os.MkdirAll(gitDir, 0755)
+
+	original := &RepoConfig{
+		Version: 1,
+		Items:   []RepoItemConfig{},
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded == nil {
+		t.Fatal("Load returned nil")
+	}
+	if len(loaded.Items) != 0 {
+		t.Errorf("expected 0 items, got %d", len(loaded.Items))
+	}
+}
+
+func TestFilterGlobalConfig_EmptyRepoConfig(t *testing.T) {
+	globalCfg := &config.Config{
+		Version:   1,
+		SourceDir: "/tmp/source",
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeFile, SourcePath: ".envrc", TargetPath: ".envrc", Enabled: true},
+		},
+	}
+
+	repoCfg := &RepoConfig{Version: 1}
+	filtered := repoCfg.FilterGlobalConfig(globalCfg)
+
+	if len(filtered.Items) != 0 {
+		t.Errorf("expected 0 items with empty repo config, got %d", len(filtered.Items))
+	}
+}
+
 func TestFilterAndSelect_IntegrationFlow(t *testing.T) {
 	// Simulates the inject command's flow:
 	// 1. Load global config with all items

@@ -6,7 +6,7 @@ LDFLAGS := -ldflags "-s -w -X github.com/ezer/repoinjector/internal/cmd.version=
 PREFIX ?= /usr/local
 COVERAGE_THRESHOLD ?= 70
 
-.PHONY: help build run test test_coverage clean install uninstall
+.PHONY: help build run test test_coverage test_coverage_html test_coverage_report clean install uninstall
 .PHONY: lint format format_check vet check_all
 
 help:
@@ -26,6 +26,8 @@ help:
 	@echo "=== Testing ==="
 	@echo "  make test               - Run tests"
 	@echo "  make test_coverage      - Run tests with coverage ($(COVERAGE_THRESHOLD)% threshold)"
+	@echo "  make test_coverage_html - Run tests and open HTML coverage report"
+	@echo "  make test_coverage_report - Show per-function coverage breakdown"
 	@echo ""
 	@echo "=== Unified Checks ==="
 	@echo "  make check_all          - Run all checks (format, vet, lint, test)"
@@ -38,7 +40,7 @@ run: build
 	./$(BUILD_DIR)/$(BINARY_NAME)
 
 clean:
-	rm -rf $(BUILD_DIR) coverage.out
+	rm -rf $(BUILD_DIR) coverage.out coverage.html
 
 # Install
 install: build
@@ -66,7 +68,7 @@ test:
 	go test ./...
 
 test_coverage:
-	go test -coverprofile=coverage.out -covermode=atomic ./...
+	go test -coverprofile=coverage.out -covermode=atomic -count=1 ./...
 	@go tool cover -func=coverage.out | tail -1
 	@total=$$(go tool cover -func=coverage.out | tail -1 | awk '{print $$NF}' | tr -d '%'); \
 	if [ $$(echo "$$total < $(COVERAGE_THRESHOLD)" | bc -l) -eq 1 ]; then \
@@ -74,6 +76,16 @@ test_coverage:
 	else \
 		echo "Coverage $$total% meets threshold $(COVERAGE_THRESHOLD)%"; \
 	fi
+
+test_coverage_html: test_coverage
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "Coverage report: coverage.html"
+	@command -v open >/dev/null 2>&1 && open coverage.html || true
+
+test_coverage_report: test_coverage
+	@echo ""
+	@echo "=== Per-function coverage ==="
+	@go tool cover -func=coverage.out
 
 # Unified checks
 check_all:
