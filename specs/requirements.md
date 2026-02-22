@@ -181,3 +181,105 @@ When injection, ejection, or status completes, the system shall print a summary 
 
 ### REQ-OUT-003: Exit code
 If any item encounters an error during injection or ejection, then the system shall exit with a non-zero exit code.
+
+## 8. Sync-Code Command
+
+### REQ-SYC-001: Default target
+When the user runs `repoinjector sync-code` without a directory argument, the system shall use the current working directory as the target.
+
+### REQ-SYC-002: Repository discovery
+The system shall discover all git repositories as immediate subdirectories of the target directory.
+
+### REQ-SYC-003: No repos found
+If no git repositories are found under the target directory, then the system shall return an error.
+
+### REQ-SYC-004: Fetch and pull
+The system shall run `git fetch` followed by `git pull` for each discovered repository.
+
+### REQ-SYC-005: Dirty working tree skip
+When a repository has a dirty working tree and `--autostash` is not set, the system shall skip it.
+
+### REQ-SYC-006: Autostash
+Where the `--autostash` flag is provided, the system shall stash dirty working trees before pulling.
+
+### REQ-SYC-007: Diverged skip
+When a repository has diverged from its upstream, the system shall always skip it.
+
+### REQ-SYC-008: Pull strategy
+The system shall support three pull strategies via the `--strategy` flag: `ff-only` (default), `rebase`, and `merge`.
+
+### REQ-SYC-009: Parallel workers
+Where the `-j` or `--jobs` flag is provided, the system shall run the specified number of sync workers in parallel.
+
+### REQ-SYC-010: No fetch
+Where the `--no-fetch` flag is provided, the system shall skip `git fetch` and check local status only.
+
+### REQ-SYC-011: Dry run
+Where the `--dry-run` flag is provided, the system shall report what would be done without pulling.
+
+### REQ-SYC-012: JSON output
+Where the `--json` flag is provided, the system shall output sync results as JSON to stdout.
+
+### REQ-SYC-013: Summary line
+When sync completes, the system shall print a summary with counts of pulled, current, skipped, conflicts, and errors.
+
+### REQ-SYC-014: Error exit code
+If any repository encounters an error during sync, then the system shall exit with a non-zero exit code.
+
+### REQ-SYC-015: Conflict warning
+If any repository has conflicts requiring manual resolution, the system shall print a warning to stderr.
+
+## 9. Sync-State Command
+
+### REQ-SYS-001: Default target
+When the user runs `repoinjector sync-state` without a directory argument, the system shall use the current working directory as the target.
+
+### REQ-SYS-002: Repository discovery
+The system shall discover all git repositories as immediate subdirectories of the target directory.
+
+### REQ-SYS-003: No repos found
+If no git repositories are found under the target directory, then the system shall return an error.
+
+### REQ-SYS-004: Review state filter
+The system shall only check repositories with a stored merge URL and a review-related state (`review`, `approved`, `review-blocked`).
+
+### REQ-SYS-005: Platform detection
+The system shall detect the platform from the merge URL: `github.com` URLs use the `gh` CLI, all other URLs use the `glab` CLI.
+
+### REQ-SYS-006: GitHub state mapping
+When querying GitHub, the system shall map PR states as follows: MERGED to `merged`, CLOSED to `closed`, OPEN with APPROVED review decision to `approved`, OPEN with failing checks to `review-blocked`, and OPEN otherwise to `review`.
+
+### REQ-SYS-007: GitLab state mapping
+When querying GitLab, the system shall map MR states as follows: merged to `merged`, closed to `closed`, opened with approved=true to `approved`, and opened otherwise to `review`.
+
+### REQ-SYS-008: State update persistence
+When the queried state differs from the stored state and `--dry-run` is not set, the system shall save the new state to the repository config.
+
+### REQ-SYS-009: No active merge requests
+If no repositories with active merge requests are found, the system shall print a message and exit successfully.
+
+### REQ-SYS-010: Dry run
+Where the `--dry-run` flag is provided, the system shall report what would change without updating configs.
+
+### REQ-SYS-011: JSON output
+Where the `--json` flag is provided, the system shall output sync-state results as JSON to stdout.
+
+### REQ-SYS-012: Summary line
+When sync-state completes, the system shall print a summary with counts of updated, unchanged, and errors.
+
+## 10. Sync Command (Umbrella)
+
+### REQ-SYN-001: Combined execution
+When the user runs `repoinjector sync`, the system shall execute `sync-code` followed by `sync-state` on the same target directory.
+
+### REQ-SYN-002: Default target
+When the user runs `repoinjector sync` without a directory argument, the system shall use the current working directory as the target.
+
+### REQ-SYN-003: Flag forwarding
+The system shall forward `--dry-run` and `--json` to both `sync-code` and `sync-state`, and forward `--autostash`, `--jobs`, `--no-fetch`, and `--strategy` to `sync-code`.
+
+### REQ-SYN-004: Error accumulation
+If either `sync-code` or `sync-state` returns an error, the system shall continue executing the other and report all errors at the end.
+
+### REQ-SYN-005: Error exit code
+If either sub-command encounters an error, the system shall exit with a non-zero exit code.
