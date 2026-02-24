@@ -137,6 +137,72 @@ func TestDefaultConfig_HasSourceDir(t *testing.T) {
 	}
 }
 
+func TestExpandPath_Tilde(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("cannot get home dir: %v", err)
+	}
+
+	got := ExpandPath("~")
+	if got != home {
+		t.Errorf("ExpandPath(~) = %q, want %q", got, home)
+	}
+}
+
+func TestExpandPath_TildeSlash(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("cannot get home dir: %v", err)
+	}
+
+	got := ExpandPath("~/my-config")
+	want := filepath.Join(home, "my-config")
+	if got != want {
+		t.Errorf("ExpandPath(~/my-config) = %q, want %q", got, want)
+	}
+}
+
+func TestExpandPath_EnvVar(t *testing.T) {
+	t.Setenv("TEST_EXPAND_DIR", "/tmp/test-dir")
+
+	got := ExpandPath("$TEST_EXPAND_DIR")
+	if got != "/tmp/test-dir" {
+		t.Errorf("ExpandPath($TEST_EXPAND_DIR) = %q, want %q", got, "/tmp/test-dir")
+	}
+}
+
+func TestExpandPath_EnvVarBraces(t *testing.T) {
+	t.Setenv("TEST_EXPAND_DIR", "/tmp/test-dir")
+
+	got := ExpandPath("${TEST_EXPAND_DIR}/subdir")
+	if got != "/tmp/test-dir/subdir" {
+		t.Errorf("ExpandPath(${TEST_EXPAND_DIR}/subdir) = %q, want %q", got, "/tmp/test-dir/subdir")
+	}
+}
+
+func TestExpandPath_AbsoluteUnchanged(t *testing.T) {
+	got := ExpandPath("/usr/local/bin")
+	if got != "/usr/local/bin" {
+		t.Errorf("ExpandPath(/usr/local/bin) = %q, want %q", got, "/usr/local/bin")
+	}
+}
+
+func TestExpandPath_EmptyString(t *testing.T) {
+	got := ExpandPath("")
+	if got != "" {
+		t.Errorf("ExpandPath('') = %q, want empty string", got)
+	}
+}
+
+func TestExpandPath_HomeEnvVar(t *testing.T) {
+	t.Setenv("HOME", "/tmp/fakehome")
+
+	got := ExpandPath("$HOME/projects")
+	if got != "/tmp/fakehome/projects" {
+		t.Errorf("ExpandPath($HOME/projects) = %q, want %q", got, "/tmp/fakehome/projects")
+	}
+}
+
 func TestSaveAndLoad(t *testing.T) {
 	// Override HOME so os.UserConfigDir() resolves to a temp location.
 	// On macOS UserConfigDir returns $HOME/Library/Application Support,

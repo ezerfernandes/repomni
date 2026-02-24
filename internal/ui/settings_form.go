@@ -76,7 +76,7 @@ func RunSettingsForm(cfg *config.Config) (*config.Config, error) {
 					if s == "" {
 						return fmt.Errorf("source directory is required")
 					}
-					abs, err := filepath.Abs(s)
+					abs, err := filepath.Abs(config.ExpandPath(s))
 					if err != nil {
 						return err
 					}
@@ -143,7 +143,7 @@ func RunSettingsForm(cfg *config.Config) (*config.Config, error) {
 		return nil, fmt.Errorf("cancelled by user")
 	}
 
-	absSource, err := filepath.Abs(sourceDir)
+	absSource, err := filepath.Abs(config.ExpandPath(sourceDir))
 	if err != nil {
 		return nil, err
 	}

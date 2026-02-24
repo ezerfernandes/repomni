@@ -41,11 +41,11 @@ func runSettings(cmd *cobra.Command, args []string) error {
 		if settingsSource == "" {
 			return fmt.Errorf("--source is required in non-interactive mode")
 		}
-		cfg.SourceDir = settingsSource
+		cfg.SourceDir = config.ExpandPath(settingsSource)
 	} else {
 		// Override source if flag provided
 		if settingsSource != "" {
-			cfg.SourceDir = settingsSource
+			cfg.SourceDir = config.ExpandPath(settingsSource)
 		}
 
 		cfg, err = ui.RunSettingsForm(cfg)
@@ -55,6 +55,7 @@ func runSettings(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate source directory
+	cfg.SourceDir = config.ExpandPath(cfg.SourceDir)
 	if cfg.SourceDir == "" {
 		return fmt.Errorf("source directory cannot be empty")
 	}

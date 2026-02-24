@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -109,6 +110,22 @@ func (c *Config) Save() error {
 	}
 
 	return nil
+}
+
+// ExpandPath expands ~ and environment variables in a path string.
+func ExpandPath(path string) string {
+	path = os.ExpandEnv(path)
+	if path == "~" {
+		if home, err := os.UserHomeDir(); err == nil {
+			return home
+		}
+	}
+	if strings.HasPrefix(path, "~/") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, path[2:])
+		}
+	}
+	return path
 }
 
 func (c *Config) EnabledItems() []Item {
