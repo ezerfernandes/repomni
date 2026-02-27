@@ -12,12 +12,14 @@ import (
 	"github.com/ezer/repoinjector/internal/gitutil"
 )
 
+// Result describes the outcome of injecting or ejecting a single item.
 type Result struct {
 	Item   config.Item
 	Action string // "created", "updated", "skipped", "error"
 	Detail string
 }
 
+// Options controls the behavior of an [Inject] operation.
 type Options struct {
 	DryRun bool
 	Force  bool
@@ -72,6 +74,7 @@ func findEnvInParents(startDir string) envSearchResult {
 	}
 }
 
+// Inject places each enabled config item into targetDir using symlinks or copies.
 func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error) {
 	targetDir, err := filepath.Abs(targetDir)
 	if err != nil {
@@ -189,6 +192,7 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 	return results, nil
 }
 
+// Eject removes all previously injected items from targetDir and cleans up git excludes.
 func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 	targetDir, err := filepath.Abs(targetDir)
 	if err != nil {
@@ -256,6 +260,7 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 	return results, nil
 }
 
+// ItemStatus reports the current state of a single injected item in a target repo.
 type ItemStatus struct {
 	Item     config.Item
 	Present  bool
@@ -264,6 +269,8 @@ type ItemStatus struct {
 	Detail   string
 }
 
+// Status checks each enabled config item in targetDir and reports whether it is
+// present, current, and excluded from git.
 func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 	targetDir, err := filepath.Abs(targetDir)
 	if err != nil {

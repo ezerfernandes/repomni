@@ -8,6 +8,7 @@ import (
 )
 
 const (
+	// ScriptSetup is the script type for post-branch-creation setup scripts.
 	ScriptSetup = "setup"
 )
 

@@ -6,6 +6,7 @@ import (
 	"github.com/ezer/repoinjector/internal/injector"
 )
 
+// PrintResults prints injection or ejection results with a summary line.
 func PrintResults(results []injector.Result) {
 	created, skipped, errors := 0, 0, 0
 
@@ -35,6 +36,7 @@ func PrintResults(results []injector.Result) {
 	fmt.Print(summary)
 }
 
+// PrintStatusTable prints a table showing the injection status of each item in a repo.
 func PrintStatusTable(repoPath string, statuses []injector.ItemStatus) {
 	fmt.Printf("\nRepository: %s\n", repoPath)
 	fmt.Println("  Item                   Present   Current   Excluded")

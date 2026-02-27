@@ -9,20 +9,27 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// InjectionMode controls how files are placed in target repositories.
 type InjectionMode string
 
 const (
+	// ModeSymlink creates symbolic links pointing to the source files.
 	ModeSymlink InjectionMode = "symlink"
+	// ModeCopy creates independent copies of the source files.
 	ModeCopy    InjectionMode = "copy"
 )
 
+// ItemType distinguishes file items from directory items.
 type ItemType string
 
 const (
+	// ItemTypeFile represents a single file to inject.
 	ItemTypeFile      ItemType = "file"
+	// ItemTypeDirectory represents a directory whose entries are merged individually.
 	ItemTypeDirectory ItemType = "directory"
 )
 
+// Item describes a single file or directory to inject from the source into a target repo.
 type Item struct {
 	Type       ItemType `yaml:"type"`
 	SourcePath string   `yaml:"source_path"`
@@ -30,6 +37,7 @@ type Item struct {
 	Enabled    bool     `yaml:"enabled"`
 }
 
+// Config holds the global repoinjector configuration.
 type Config struct {
 	Version   int           `yaml:"version"`
 	SourceDir string        `yaml:"source_dir"`
@@ -37,6 +45,7 @@ type Config struct {
 	Items     []Item        `yaml:"items"`
 }
 
+// DefaultItems returns the built-in set of items to inject.
 func DefaultItems() []Item {
 	return []Item{
 		{Type: ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
@@ -46,6 +55,7 @@ func DefaultItems() []Item {
 	}
 }
 
+// DefaultConfig returns a new Config populated with default values.
 func DefaultConfig() *Config {
 	return &Config{
 		Version: 1,
@@ -62,6 +72,7 @@ func configDir() (string, error) {
 	return filepath.Join(dir, "repoinjector"), nil
 }
 
+// ConfigPath returns the full path to the global config file.
 func ConfigPath() (string, error) {
 	dir, err := configDir()
 	if err != nil {
@@ -70,6 +81,7 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, "config.yaml"), nil
 }
 
+// Load reads and parses the global config file.
 func Load() (*Config, error) {
 	path, err := ConfigPath()
 	if err != nil {
@@ -89,6 +101,7 @@ func Load() (*Config, error) {
 	return &cfg, nil
 }
 
+// Save writes the config to disk, creating directories as needed.
 func (c *Config) Save() error {
 	path, err := ConfigPath()
 	if err != nil {
@@ -128,6 +141,7 @@ func ExpandPath(path string) string {
 	return path
 }
 
+// EnabledItems returns only the items that have Enabled set to true.
 func (c *Config) EnabledItems() []Item {
 	var items []Item
 	for _, item := range c.Items {
