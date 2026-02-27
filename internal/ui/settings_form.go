@@ -24,6 +24,7 @@ var defaultItemDefs = []itemDef{
 	{label: ".env (file)", key: ".env", sourcePath: ".env", targetPath: ".env", itemType: config.ItemTypeFile},
 }
 
+// RunSettingsForm runs the interactive TUI for editing the global configuration.
 func RunSettingsForm(cfg *config.Config) (*config.Config, error) {
 	var sourceDir string
 	if cfg.SourceDir != "" {
