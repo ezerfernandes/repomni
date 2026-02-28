@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/huh"
-	"github.com/ezer/repoinjector/internal/scripter"
+	"github.com/ezerfernandes/repoinjector/internal/scripter"
 )
 
 // ScriptAction describes what the user chose to do.

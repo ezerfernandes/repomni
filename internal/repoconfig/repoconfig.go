@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ezer/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/config"
 	"gopkg.in/yaml.v3"
 )
 

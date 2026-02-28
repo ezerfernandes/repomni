@@ -6,11 +6,11 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ezer/repoinjector/internal/config"
-	"github.com/ezer/repoinjector/internal/gitutil"
-	"github.com/ezer/repoinjector/internal/injector"
-	"github.com/ezer/repoinjector/internal/syncer"
-	"github.com/ezer/repoinjector/internal/ui"
+	"github.com/ezerfernandes/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/injector"
+	"github.com/ezerfernandes/repoinjector/internal/syncer"
+	"github.com/ezerfernandes/repoinjector/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -45,8 +45,8 @@ func init() {
 }
 
 type jsonStatusOutput struct {
-	Repo   string             `json:"repo"`
-	Items  []jsonItemStatus   `json:"items"`
+	Repo  string           `json:"repo"`
+	Items []jsonItemStatus `json:"items"`
 }
 
 type jsonItemStatus struct {

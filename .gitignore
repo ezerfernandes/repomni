@@ -37,3 +37,5 @@ dist/
 # Editor/IDE
 # .idea/
 # .vscode/
+# Nightshift plan artifacts (keep out of version control)
+.nightshift-plan

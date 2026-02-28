@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ezer/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
 	"github.com/spf13/cobra"
 )
 

@@ -34,16 +34,16 @@ Go supports cross-compilation natively. Build for all target platforms:
 make clean
 
 # Linux amd64 (most WSL2 and cloud instances)
-GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X github.com/ezer/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-linux-amd64 ./cmd/repoinjector
+GOOS=linux GOARCH=amd64 go build -ldflags "-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-linux-amd64 ./cmd/repoinjector
 
 # Linux arm64 (Raspberry Pi, ARM servers, some WSL2 on ARM)
-GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X github.com/ezer/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-linux-arm64 ./cmd/repoinjector
+GOOS=linux GOARCH=arm64 go build -ldflags "-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-linux-arm64 ./cmd/repoinjector
 
 # macOS amd64 (Intel Macs)
-GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X github.com/ezer/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-darwin-amd64 ./cmd/repoinjector
+GOOS=darwin GOARCH=amd64 go build -ldflags "-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-darwin-amd64 ./cmd/repoinjector
 
 # macOS arm64 (Apple Silicon)
-GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X github.com/ezer/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-darwin-arm64 ./cmd/repoinjector
+GOOS=darwin GOARCH=arm64 go build -ldflags "-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=$(git describe --tags --always --dirty)" -o dist/repoinjector-darwin-arm64 ./cmd/repoinjector
 ```
 
 The flags `-s -w` strip debug info and DWARF symbols to reduce binary size.
@@ -139,7 +139,7 @@ jobs:
         run: |
           mkdir -p dist
           VERSION=${GITHUB_REF_NAME}
-          LDFLAGS="-s -w -X github.com/ezer/repoinjector/internal/cmd.version=${VERSION}"
+          LDFLAGS="-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=${VERSION}"
 
           GOOS=linux   GOARCH=amd64 go build -ldflags "${LDFLAGS}" -o dist/repoinjector-linux-amd64  ./cmd/repoinjector
           GOOS=linux   GOARCH=arm64 go build -ldflags "${LDFLAGS}" -o dist/repoinjector-linux-arm64  ./cmd/repoinjector
@@ -175,7 +175,7 @@ git push origin $VERSION
 
 # Build all platforms
 mkdir -p dist
-LDFLAGS="-s -w -X github.com/ezer/repoinjector/internal/cmd.version=$VERSION"
+LDFLAGS="-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=$VERSION"
 GOOS=linux  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/repoinjector-linux-amd64  ./cmd/repoinjector
 GOOS=linux  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o dist/repoinjector-linux-arm64  ./cmd/repoinjector
 GOOS=darwin GOARCH=amd64 go build -ldflags "$LDFLAGS" -o dist/repoinjector-darwin-amd64 ./cmd/repoinjector

@@ -7,10 +7,10 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ezer/repoinjector/internal/gitutil"
-	"github.com/ezer/repoinjector/internal/mergestatus"
-	"github.com/ezer/repoinjector/internal/repoconfig"
-	"github.com/ezer/repoinjector/internal/ui"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/mergestatus"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -125,8 +125,8 @@ func runSyncState(cmd *cobra.Command, args []string) error {
 
 	if syncStateJSON {
 		out := struct {
-			Results []mergestatus.Result  `json:"results"`
-			Summary mergestatus.Summary   `json:"summary"`
+			Results []mergestatus.Result `json:"results"`
+			Summary mergestatus.Summary  `json:"summary"`
 		}{Results: results, Summary: summary}
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")

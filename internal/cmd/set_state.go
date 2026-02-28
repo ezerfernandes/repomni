@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/ezer/repoinjector/internal/gitutil"
-	"github.com/ezer/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
 	"github.com/spf13/cobra"
 )
 

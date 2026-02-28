@@ -1,7 +1,7 @@
 BINARY_NAME := repoinjector
 BUILD_DIR := bin
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
-LDFLAGS := -ldflags "-s -w -X github.com/ezer/repoinjector/internal/cmd.version=$(VERSION)"
+LDFLAGS := -ldflags "-s -w -X github.com/ezerfernandes/repoinjector/internal/cmd.version=$(VERSION)"
 
 PREFIX ?= /usr/local
 COVERAGE_THRESHOLD ?= 70

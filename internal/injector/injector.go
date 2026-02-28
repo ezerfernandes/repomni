@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ezer/repoinjector/internal/config"
-	"github.com/ezer/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
 )
 
 // Result describes the outcome of injecting or ejecting a single item.
@@ -264,7 +264,7 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 type ItemStatus struct {
 	Item     config.Item
 	Present  bool
-	Current  bool   // symlink points to correct source, or copy matches
+	Current  bool // symlink points to correct source, or copy matches
 	Excluded bool
 	Detail   string
 }

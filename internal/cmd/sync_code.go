@@ -5,9 +5,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ezer/repoinjector/internal/gitutil"
-	"github.com/ezer/repoinjector/internal/syncer"
-	"github.com/ezer/repoinjector/internal/ui"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/syncer"
+	"github.com/ezerfernandes/repoinjector/internal/ui"
 	"github.com/spf13/cobra"
 )
 

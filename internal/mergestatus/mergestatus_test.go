@@ -3,7 +3,7 @@ package mergestatus
 import (
 	"testing"
 
-	"github.com/ezer/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
 )
 
 func TestReviewStates(t *testing.T) {

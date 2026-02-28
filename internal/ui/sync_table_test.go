@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ezer/repoinjector/internal/syncer"
+	"github.com/ezerfernandes/repoinjector/internal/syncer"
 )
 
 func TestSyncActionIcon(t *testing.T) {

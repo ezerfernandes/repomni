@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/huh"
-	"github.com/ezer/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/config"
 )
 
 // SelectDirEntries shows a multi-select for each enabled directory item,

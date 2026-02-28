@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ezer/repoinjector/internal/config"
-	"github.com/ezer/repoinjector/internal/ui"
+	"github.com/ezerfernandes/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/ui"
 	"github.com/spf13/cobra"
 )
 

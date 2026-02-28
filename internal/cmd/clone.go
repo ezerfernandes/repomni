@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ezer/repoinjector/internal/brancher"
-	"github.com/ezer/repoinjector/internal/gitutil"
-	"github.com/ezer/repoinjector/internal/repoconfig"
-	"github.com/ezer/repoinjector/internal/scripter"
+	"github.com/ezerfernandes/repoinjector/internal/brancher"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/scripter"
 	"github.com/spf13/cobra"
 )
 

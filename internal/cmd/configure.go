@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ezer/repoinjector/internal/config"
-	"github.com/ezer/repoinjector/internal/gitutil"
-	"github.com/ezer/repoinjector/internal/repoconfig"
-	"github.com/ezer/repoinjector/internal/ui"
+	"github.com/ezerfernandes/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/ui"
 	"github.com/spf13/cobra"
 )
 

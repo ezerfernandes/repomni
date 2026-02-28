@@ -53,7 +53,7 @@ This puts the binary in `~/.local/bin/repoinjector` — make sure `~/.local/bin`
 ### With `go install`
 
 ```sh
-go install github.com/ezer/repoinjector/cmd/repoinjector@latest
+go install github.com/ezerfernandes/repoinjector/cmd/repoinjector@latest
 ```
 
 This installs to `$GOPATH/bin` (usually `~/go/bin`). Make sure it's in your `PATH`.

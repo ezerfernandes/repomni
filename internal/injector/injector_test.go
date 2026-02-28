@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ezer/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/config"
 )
 
 func setupTestEnv(t *testing.T) (sourceDir, targetDir string, cfg *config.Config) {

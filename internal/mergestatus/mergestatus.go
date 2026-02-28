@@ -7,7 +7,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ezer/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
 )
 
 // Platform represents a git hosting platform.

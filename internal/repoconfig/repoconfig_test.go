@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/ezer/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/config"
 )
 
 func TestFilterGlobalConfig(t *testing.T) {
@@ -70,9 +70,9 @@ func TestToSelectedEntries(t *testing.T) {
 		Version: 1,
 		Items: []RepoItemConfig{
 			{TargetPath: ".claude/skills", Enabled: true, Entries: []string{"hello-world", "web-browser"}},
-			{TargetPath: ".claude/hooks.json", Enabled: true},          // file item, no entries
-			{TargetPath: ".envrc", Enabled: false},                     // disabled
-			{TargetPath: ".other-dir", Enabled: true, Entries: nil},    // enabled but nil entries
+			{TargetPath: ".claude/hooks.json", Enabled: true},       // file item, no entries
+			{TargetPath: ".envrc", Enabled: false},                  // disabled
+			{TargetPath: ".other-dir", Enabled: true, Entries: nil}, // enabled but nil entries
 		},
 	}
 

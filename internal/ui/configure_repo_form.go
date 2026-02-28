@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/huh"
-	"github.com/ezer/repoinjector/internal/config"
-	"github.com/ezer/repoinjector/internal/repoconfig"
+	"github.com/ezerfernandes/repoinjector/internal/config"
+	"github.com/ezerfernandes/repoinjector/internal/repoconfig"
 )
 
 // RunConfigureRepoForm runs the interactive TUI for configuring per-repo injection settings.

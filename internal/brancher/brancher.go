@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ezer/repoinjector/internal/gitutil"
+	"github.com/ezerfernandes/repoinjector/internal/gitutil"
 )
 
 // Result holds information about a successful branch operation.

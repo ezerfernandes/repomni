@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/ezer/repoinjector/internal/syncer"
+	"github.com/ezerfernandes/repoinjector/internal/syncer"
 )
 
 // PrintSyncResults displays sync results as a table with a summary line.
@@ -70,8 +70,8 @@ func PrintGitStatusTable(statuses []syncer.RepoStatus) {
 // PrintSyncJSON outputs sync results as JSON to stdout.
 func PrintSyncJSON(results []syncer.SyncResult, summary syncer.SyncSummary) error {
 	out := struct {
-		Results []syncer.SyncResult  `json:"results"`
-		Summary syncer.SyncSummary   `json:"summary"`
+		Results []syncer.SyncResult `json:"results"`
+		Summary syncer.SyncSummary  `json:"summary"`
 	}{Results: results, Summary: summary}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
