@@ -34,7 +34,7 @@ help:
 
 # Build
 build:
-	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) ./cmd/repoinjector
+	go build $(LDFLAGS) -o $(BUILD_DIR)/$(BINARY_NAME) .
 
 run: build
 	./$(BUILD_DIR)/$(BINARY_NAME)
