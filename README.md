@@ -23,7 +23,7 @@ When working with multiple branch copies of the same repo (e.g., running paralle
 | `.envrc` | `.envrc` | file |
 | `.env` | `.env` | file |
 
-Source paths are configurable via `repoinjector settings`.
+Source paths are configurable via `repoinjector config global`.
 
 ## Installation
 
@@ -92,7 +92,7 @@ my-agent-config/
 ### 2. Configure repoinjector
 
 ```sh
-repoinjector settings
+repoinjector config global
 ```
 
 This walks you through an interactive wizard to set the source directory, injection mode, and which items to inject. Configuration is saved to `~/.config/repoinjector/config.yaml`.
@@ -100,7 +100,7 @@ This walks you through an interactive wizard to set the source directory, inject
 For scripted setup:
 
 ```sh
-repoinjector settings --non-interactive --source /path/to/my-agent-config
+repoinjector config global --non-interactive --source /path/to/my-agent-config
 ```
 
 ### 3. Inject into a repo
@@ -150,28 +150,32 @@ repoinjector eject --all /path/to/my-clones
 
 | Command | Description |
 |---|---|
-| `settings` | Interactive global setup wizard |
-| `configure` | Configure injection settings for the current repository |
 | `inject [target]` | Inject files into target repo (default: current dir) |
 | `eject [target]` | Remove injected files from target repo |
 | `status [target]` | Show injection or git status of target repo(s) |
-| `branch <name>` | Clone parent repo and create a new branch |
-| `set-state <state>` | Set workflow state for the current branch repo |
-| `branches [dir]` | List branch repos with their workflow states |
-| `sync [dir]` | Pull code updates and refresh PR/MR status |
-| `sync-code [dir]` | Pull updates for all repos in a directory |
-| `sync-state [dir]` | Update workflow states from PR/MR status |
 | `list [dir]` | List git repos in a directory (for scripting) |
-| `script` | Manage per-repo setup scripts |
+| **branch** | |
+| `branch create <name>` | Clone parent repo and create a new branch |
+| `branch clone <name>` | Clone parent repo and check out an existing remote branch |
+| `branch list [dir]` | List branch repos with their workflow states |
+| `branch set-state <state>` | Set workflow state for the current branch repo |
+| **sync** | |
+| `sync [dir]` | Pull code updates and refresh PR/MR status |
+| `sync code [dir]` | Pull updates for all repos in a directory |
+| `sync state [dir]` | Update workflow states from PR/MR status |
+| **config** | |
+| `config global` | Interactive global setup wizard |
+| `config repo` | Configure injection settings for the current repository |
+| `config script` | Manage per-repo setup scripts |
 
-### `settings`
+### `config global`
 
 Interactively configure the source directory, injection mode, and items. Saved to `~/.config/repoinjector/config.yaml`.
 
 ```sh
-repoinjector settings
-repoinjector settings --source ~/shared-config
-repoinjector settings --source ~/shared-config --non-interactive
+repoinjector config global
+repoinjector config global --source ~/shared-config
+repoinjector config global --source ~/shared-config --non-interactive
 ```
 
 | Flag | Description |
@@ -179,12 +183,12 @@ repoinjector settings --source ~/shared-config --non-interactive
 | `--source` | Source directory (skip interactive prompt) |
 | `--non-interactive` | Use defaults without prompting (requires `--source`) |
 
-### `configure`
+### `config repo`
 
 Interactively select which items and directory entries to inject into the current repository. Saved to `.git/repoinjector/config.yaml`.
 
 ```sh
-repoinjector configure
+repoinjector config repo
 ```
 
 ### `inject`
@@ -238,46 +242,59 @@ repoinjector status --json
 | `--no-fetch` | Skip `git fetch` when checking git status |
 | `--json` | Output as JSON |
 
-### `branch`
+### `branch create`
 
 Clone the parent repository and check out a new branch. Automatically injects configured files, runs the setup script, and sets state to `active`.
 
 ```sh
-repoinjector branch my-feature
-repoinjector branch my-feature --no-inject
+repoinjector branch create my-feature
+repoinjector branch create my-feature --no-inject
 ```
 
 | Flag | Description |
 |---|---|
 | `--no-inject` | Skip automatic injection into the new branch |
 
-### `set-state`
+### `branch clone`
+
+Clone the parent repository and check out an existing remote branch. Directory name is derived from the branch name (e.g., `feature/my-thing` becomes `feature-my-thing`).
+
+```sh
+repoinjector branch clone feature/my-thing
+repoinjector branch clone feature/my-thing --no-inject
+```
+
+| Flag | Description |
+|---|---|
+| `--no-inject` | Skip automatic injection into the new clone |
+
+### `branch set-state`
 
 Set a workflow state for the current repo. Stored in `.git/repoinjector/config.yaml`.
 
 Predefined states: `active`, `review`, `done`, `paused`. Custom states are also accepted (lowercase letters, digits, hyphens).
 
 ```sh
-repoinjector set-state active
-repoinjector set-state review
-repoinjector set-state done
-repoinjector set-state my-custom-state
-repoinjector set-state --clear
+repoinjector branch set-state active
+repoinjector branch set-state review
+repoinjector branch set-state done
+repoinjector branch set-state my-custom-state
+repoinjector branch set-state --clear
 ```
 
 | Flag | Description |
 |---|---|
 | `--clear` | Remove the workflow state |
 
-### `branches`
+### `branch list`
 
 List branch repos with state, git branch, and dirty status. States are color-coded: `active` (green), `review` (yellow), `done` (gray), `paused` (blue).
 
 ```sh
-repoinjector branches
-repoinjector branches /path/to/branches
-repoinjector branches --state review
-repoinjector branches --json
+repoinjector branch list
+repoinjector branch list /path/to/branches
+repoinjector branch list --state review
+repoinjector branch list --json
 ```
 
 | Flag | Description |
@@ -297,7 +314,7 @@ Example output:
 
 ### `sync`
 
-Run `sync-code` and `sync-state` together. First pulls git updates for all repos, then queries GitHub/GitLab for PR/MR status changes and updates workflow states.
+Run `sync code` and `sync state` together. First pulls git updates for all repos, then queries GitHub/GitLab for PR/MR status changes and updates workflow states.
 
 ```sh
 repoinjector sync
@@ -315,17 +332,17 @@ repoinjector sync --json
 | `--strategy` | Pull strategy: `ff-only` (default), `rebase`, `merge` |
 | `--json` | Output as JSON |
 
-### `sync-code`
+### `sync code`
 
 Fetch and pull updates for all repos under a directory. Dirty repos are skipped unless `--autostash` is used. Diverged repos are always skipped.
 
 ```sh
-repoinjector sync-code
-repoinjector sync-code --dry-run
-repoinjector sync-code --autostash
-repoinjector sync-code -j 4
-repoinjector sync-code --strategy rebase
-repoinjector sync-code --json
+repoinjector sync code
+repoinjector sync code --dry-run
+repoinjector sync code --autostash
+repoinjector sync code -j 4
+repoinjector sync code --strategy rebase
+repoinjector sync code --json
 ```
 
 | Flag | Description |
@@ -337,16 +354,16 @@ repoinjector sync-code --json
 | `--strategy` | Pull strategy: `ff-only` (default), `rebase`, `merge` |
 | `--json` | Output as JSON |
 
-### `sync-state`
+### `sync state`
 
 Query GitHub or GitLab for PR/MR status and update workflow states. Only repos with a stored merge URL and a review-related state (`review`, `approved`, `review-blocked`) are checked.
 
 Requires `gh` (GitHub) or `glab` (GitLab) to be installed and authenticated.
 
 ```sh
-repoinjector sync-state
-repoinjector sync-state --dry-run
-repoinjector sync-state --json
+repoinjector sync state
+repoinjector sync state --dry-run
+repoinjector sync state --json
 ```
 
 | Flag | Description |
@@ -367,12 +384,12 @@ repoinjector list --names
 |---|---|
 | `--names` | Output directory names only instead of full paths |
 
-### `script`
+### `config script`
 
-Interactively create or edit a setup script that runs when you create a new branch with `repoinjector branch`. Stored in `.git` and never committed.
+Interactively create or edit a setup script that runs when you create a new branch with `repoinjector branch create`. Stored in `.git` and never committed.
 
 ```sh
-repoinjector script
+repoinjector config script
 ```
 
 ## How it works
