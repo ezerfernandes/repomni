@@ -1,7 +1,5 @@
 # repomni
 
-test
-
 A CLI tool that injects shared configuration files into multiple repository clones, keeping them invisible to git.
 
 When working with multiple branch copies of the same repo (e.g., running parallel AI agents across branches), you need the same `.envrc`, `.env`, Claude skills, and hooks in every clone. Repomni symlinks them from a single source directory so you configure once and every clone stays in sync.
@@ -11,7 +9,7 @@ When working with multiple branch copies of the same repo (e.g., running paralle
 - Symlinks (or copies) files from a central source into target repos
 - Hides injected files from git using `.git/info/exclude` (no tracked files modified)
 - Supports batch operations across all repos in a directory
-- Track workflow state per branch (`active`, `review`, `closed`, `paused`) with color-coded overview
+- Track workflow state per branch (`active`, `review`, `approved`, `review-blocked`, `merged`, `closed`, `paused`) with color-coded overview
 - Interactive TUI for configuration, simple CLI for daily use
 
 ### Injected items (defaults)
@@ -158,7 +156,8 @@ repomni eject --all /path/to/my-clones
 | `branch create <name>` | Clone parent repo and create a new branch |
 | `branch clone <name>` | Clone parent repo and check out an existing remote branch |
 | `branch list [dir]` | List branch repos with their workflow states |
-| `branch set-state <state>` | Set workflow state for the current branch repo |
+| `branch set-state <state> [url]` | Set workflow state for the current branch repo |
+| `branch clean [dir]` | Remove branch repos in terminal states (merged, closed) |
 | **sync** | |
 | `sync [dir]` | Pull code updates and refresh PR/MR status |
 | `sync code [dir]` | Pull updates for all repos in a directory |
@@ -167,6 +166,14 @@ repomni eject --all /path/to/my-clones
 | `config global` | Interactive global setup wizard |
 | `config repo` | Configure injection settings for the current repository |
 | `config script` | Manage per-repo setup scripts |
+| **session** | |
+| `session list` | List Claude Code sessions for the current project |
+| `session show <session-id>` | Show messages from a Claude Code session |
+| `session search <query>` | Search Claude Code sessions by content |
+| `session export <session-id>` | Export a session as markdown |
+| `session resume <session-id>` | Resume a Claude Code session |
+| `session stats` | Show aggregate session statistics |
+| `session clean` | Remove old or empty session files |
 
 ### `config global`
 
@@ -257,7 +264,7 @@ repomni branch create my-feature --no-inject
 
 ### `branch clone`
 
-Clone the parent repository and check out an existing remote branch. Directory name is derived from the branch name (e.g., `feature/my-thing` becomes `feature-my-thing`).
+Clone the parent repository and check out an existing remote branch. Directory name is derived from the branch name (e.g., `feature/my-thing` becomes `feature-my-thing`). Automatically injects configured files, runs the setup script, and sets state to `active`.
 
 ```sh
 repomni branch clone feature/my-thing
@@ -274,9 +281,12 @@ Set a workflow state for the current repo. Stored in `.git/repomni/config.yaml`.
 
 Predefined states: `active`, `review`, `approved`, `review-blocked`, `merged`, `closed`, `paused`. Custom states are also accepted (lowercase letters, digits, hyphens).
 
+When setting state to `review`, you may provide a PR/MR URL as the second argument. This URL is stored and used by `sync state` to track PR/MR status.
+
 ```sh
 repomni branch set-state active
 repomni branch set-state review
+repomni branch set-state review https://github.com/org/repo/pull/42
 repomni branch set-state closed
 repomni branch set-state my-custom-state
 repomni branch set-state --clear
@@ -284,11 +294,11 @@ repomni branch set-state --clear
 
 | Flag | Description |
 |---|---|
-| `--clear` | Remove the workflow state |
+| `--clear` | Remove the workflow state and merge URL |
 
 ### `branch list`
 
-List branch repos with state, git branch, and dirty status. States are color-coded: `active` (green), `review` (yellow), `closed` (red), `paused` (blue).
+List branch repos with state, git branch, and dirty status. States are color-coded: `active` (green), `review` (yellow), `approved` (lime green), `review-blocked` (red), `merged` (purple), `closed` (red), `paused` (blue).
 
 ```sh
 repomni branch list
@@ -308,7 +318,7 @@ Example output:
   Name           Branch          State    Dirty
   ─────────────  ──────────────  ───────  ─────
   feat-auth      feat-auth       active
-  fix-bug-123    fix-bug-123     review   *
+  fix-bug-123    fix-bug-123     review   x
   old-feature    old-feature     closed
 ```
 
@@ -384,6 +394,25 @@ repomni list --names
 |---|---|
 | `--names` | Output directory names only instead of full paths |
 
+### `branch clean`
+
+Find branch repos in terminal states and delete them. Before deletion, branch metadata is archived to `.repomni-archive.json` in the parent directory, injected files are ejected, and the directory is removed. Repos with uncommitted changes are skipped unless `--force` is used.
+
+```sh
+repomni branch clean
+repomni branch clean /path/to/branches
+repomni branch clean --dry-run
+repomni branch clean --state merged,closed,paused
+repomni branch clean --force --json
+```
+
+| Flag | Description |
+|---|---|
+| `--dry-run` | Show what would be deleted without making changes |
+| `--json` | Output as JSON |
+| `--force` | Skip confirmation and delete dirty repos |
+| `--state` | Workflow states to clean, comma-separated (default: `merged,closed`) |
+
 ### `config script`
 
 Interactively create or edit a setup script that runs when you create a new branch with `repomni branch create`. Stored in `.git` and never committed.
@@ -391,6 +420,121 @@ Interactively create or edit a setup script that runs when you create a new bran
 ```sh
 repomni config script
 ```
+
+### `session list`
+
+List Claude Code sessions for the current project.
+
+```sh
+repomni session list
+repomni session list --limit 10
+repomni session list --json
+```
+
+| Flag | Description |
+|---|---|
+| `--json` | Output as JSON |
+| `--limit` | Maximum number of sessions to show (default: 0, unlimited) |
+
+### `session show`
+
+Display the conversation history of a specific session. Supports prefix matching on the session ID (e.g., first 6+ characters).
+
+```sh
+repomni session show abc123
+repomni session show abc123 --limit 20 --offset 5
+repomni session show abc123 --full
+repomni session show abc123 --json
+```
+
+| Flag | Description |
+|---|---|
+| `--json` | Output as JSON |
+| `--limit` | Maximum number of messages to show (default: 0, unlimited) |
+| `--offset` | Skip the first N messages |
+| `--full` | Show full `tool_use`/`tool_result` blocks |
+
+### `session search`
+
+Search Claude Code sessions by content.
+
+```sh
+repomni session search "error handling"
+repomni session search "fix bug" --mode user
+repomni session search "refactor" --limit 5
+repomni session search "deploy" --json
+```
+
+| Flag | Description |
+|---|---|
+| `--json` | Output as JSON |
+| `--mode` | Search mode: `title` (first message), `user`, `assistant`, or `all` (default: `all`) |
+| `--limit` | Maximum number of matching sessions (default: 10) |
+
+### `session export`
+
+Export a Claude Code session conversation as a markdown document. Output goes to stdout by default, or to a file with `--output`.
+
+```sh
+repomni session export abc123
+repomni session export abc123 --output session.md
+repomni session export abc123 --full
+repomni session export abc123 --no-tools
+```
+
+| Flag | Description |
+|---|---|
+| `--output` | Output file path (default: stdout) |
+| `--full` | Include full `tool_use`/`tool_result` blocks |
+| `--no-tools` | Omit messages that only contain tool calls |
+
+### `session resume`
+
+Launch Claude Code with `--resume` to continue a previous session. Supports prefix matching on the session ID.
+
+Requires the `claude` CLI to be installed and in your `PATH`.
+
+```sh
+repomni session resume abc123
+repomni session resume abc123 --continue
+```
+
+| Flag | Description |
+|---|---|
+| `--continue` | Also pass `--continue` to Claude Code |
+
+### `session stats`
+
+Show aggregate session statistics (total sessions, messages, tokens, duration, size).
+
+```sh
+repomni session stats
+repomni session stats --json
+```
+
+| Flag | Description |
+|---|---|
+| `--json` | Output as JSON |
+
+### `session clean`
+
+Find and remove session files that are empty (0 bytes) or older than a specified duration. By default, only targets empty sessions.
+
+```sh
+repomni session clean
+repomni session clean --empty
+repomni session clean --older-than 30d
+repomni session clean --dry-run
+repomni session clean --force --json
+```
+
+| Flag | Description |
+|---|---|
+| `--json` | Output as JSON |
+| `--dry-run` | Show what would be deleted without making changes |
+| `--older-than` | Delete sessions older than duration (e.g., `30d`, `7d`) |
+| `--empty` | Only remove 0-byte session files |
+| `--force` | Skip confirmation prompt |
 
 ## How it works
 
