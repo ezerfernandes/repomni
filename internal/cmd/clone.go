@@ -26,11 +26,15 @@ This is useful for creating isolated working copies for existing branches.`,
 	RunE: runClone,
 }
 
-var cloneNoInject bool
+var (
+	cloneNoInject bool
+	cloneTicket   string
+)
 
 func init() {
 	branchCmd.AddCommand(cloneCmd)
 	cloneCmd.Flags().BoolVar(&cloneNoInject, "no-inject", false, "skip automatic injection into the new clone")
+	cloneCmd.Flags().StringVar(&cloneTicket, "ticket", "", "associate a ticket identifier (e.g., PROJ-123)")
 }
 
 func runClone(cmd *cobra.Command, args []string) error {
@@ -58,6 +62,7 @@ func runClone(cmd *cobra.Command, args []string) error {
 		}
 		newCfg.State = string(repoconfig.StateActive)
 		newCfg.Remote = true
+		newCfg.Ticket = cloneTicket
 		if err := repoconfig.Save(newGitDir, newCfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not set initial state: %v\n", err)
 		}

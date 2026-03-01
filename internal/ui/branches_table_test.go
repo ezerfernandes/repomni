@@ -276,3 +276,57 @@ func TestPrintBranchesTable_RemoteExpandsColumn(t *testing.T) {
 		t.Error("expected 'abcd*' in output")
 	}
 }
+
+func TestPrintBranchesTable_WithTicket(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active", Ticket: "PROJ-123"},
+		{Path: "/repos/feat-b", Name: "feat-b", Branch: "feat-b", State: "review", Ticket: ""},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesTable(infos)
+	})
+
+	if !strings.Contains(output, "Ticket") {
+		t.Error("expected Ticket column header when any branch has a ticket")
+	}
+	if !strings.Contains(output, "PROJ-123") {
+		t.Error("expected PROJ-123 in output")
+	}
+}
+
+func TestPrintBranchesTable_NoTickets(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active"},
+		{Path: "/repos/feat-b", Name: "feat-b", Branch: "feat-b", State: "review"},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesTable(infos)
+	})
+
+	if strings.Contains(output, "Ticket") {
+		t.Error("should not show Ticket column when no branches have tickets")
+	}
+}
+
+func TestPrintBranchesTable_AllWithTickets(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active", Ticket: "PROJ-123"},
+		{Path: "/repos/feat-b", Name: "feat-b", Branch: "feat-b", State: "review", Ticket: "LIN-456"},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesTable(infos)
+	})
+
+	if !strings.Contains(output, "Ticket") {
+		t.Error("expected Ticket column header")
+	}
+	if !strings.Contains(output, "PROJ-123") {
+		t.Error("expected PROJ-123 in output")
+	}
+	if !strings.Contains(output, "LIN-456") {
+		t.Error("expected LIN-456 in output")
+	}
+}

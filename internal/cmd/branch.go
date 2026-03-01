@@ -26,11 +26,15 @@ This is useful for creating isolated working copies for feature branches.`,
 	RunE: runCreate,
 }
 
-var createNoInject bool
+var (
+	createNoInject bool
+	createTicket   string
+)
 
 func init() {
 	branchCmd.AddCommand(createCmd)
 	createCmd.Flags().BoolVar(&createNoInject, "no-inject", false, "skip automatic injection into the new branch")
+	createCmd.Flags().StringVar(&createTicket, "ticket", "", "associate a ticket identifier (e.g., PROJ-123)")
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
@@ -58,6 +62,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		}
 		newCfg.State = string(repoconfig.StateActive)
 		newCfg.Remote = false
+		newCfg.Ticket = createTicket
 		if err := repoconfig.Save(newGitDir, newCfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not set initial state: %v\n", err)
 		}

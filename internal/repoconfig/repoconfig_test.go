@@ -491,6 +491,64 @@ func TestFilterAndSelect_IntegrationFlow(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoad_WithTicket(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	original := &RepoConfig{
+		Version: 1,
+		State:   "active",
+		Ticket:  "PROJ-123",
+		Items: []RepoItemConfig{
+			{TargetPath: ".envrc", Enabled: true},
+		},
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.Ticket != "PROJ-123" {
+		t.Errorf("Ticket mismatch: got %q, want %q", loaded.Ticket, "PROJ-123")
+	}
+	if loaded.State != "active" {
+		t.Errorf("State mismatch: got %q, want %q", loaded.State, "active")
+	}
+}
+
+func TestSaveAndLoad_WithoutTicket(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Config without ticket — verifies backward compatibility.
+	original := &RepoConfig{
+		Version: 1,
+		State:   "review",
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.Ticket != "" {
+		t.Errorf("Ticket should be empty, got %q", loaded.Ticket)
+	}
+}
+
 func TestNoRepoConfig_AllEntriesAllowed(t *testing.T) {
 	// When no repo config exists (repoCfg is nil), allowedEntries should be nil,
 	// which means all entries are shown in the picker.

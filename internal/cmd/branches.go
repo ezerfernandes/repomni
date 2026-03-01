@@ -100,6 +100,7 @@ func collectBranchInfo(repoPath string) ui.BranchInfo {
 		if cfg != nil {
 			info.State = cfg.State
 			info.MergeURL = cfg.MergeURL
+			info.Ticket = cfg.Ticket
 			info.Remote = cfg.Remote
 		}
 	}
