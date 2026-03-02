@@ -16,6 +16,7 @@ func TestEncodePath(t *testing.T) {
 		{"/", "-"},
 		{"/Users/ezersilva/repos/mine/tools/repomni", "-Users-ezersilva-repos-mine-tools-repomni"},
 		{"/home/user/project with spaces", "-home-user-project with spaces"},
+		{"/home/ezer/repos/mine/templates/go_vite_template/tmp/branches/levelup-template", "-home-ezer-repos-mine-templates-go-vite-template-tmp-branches-levelup-template"},
 	}
 
 	for _, tt := range tests {
