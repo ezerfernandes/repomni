@@ -62,9 +62,11 @@ type Match struct {
 }
 
 // EncodePath converts an absolute filesystem path to the Claude Code
-// encoded directory name by replacing each '/' with '-'.
+// encoded directory name by replacing '/' and '_' with '-'.
 func EncodePath(absPath string) string {
-	return strings.ReplaceAll(absPath, "/", "-")
+	s := strings.ReplaceAll(absPath, "/", "-")
+	s = strings.ReplaceAll(s, "_", "-")
+	return s
 }
 
 // ClaudeProjectsDir returns the path to ~/.claude/projects/.
