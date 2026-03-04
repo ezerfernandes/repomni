@@ -344,3 +344,164 @@ func TestPrintBranchesTable_AllWithTickets(t *testing.T) {
 		t.Error("expected LIN-456 in output")
 	}
 }
+
+func TestPrintBranchesList_Basic(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active", Dirty: false},
+		{Path: "/repos/feat-b", Name: "feat-b", Branch: "feat-b", State: "review", Dirty: true},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	if !strings.Contains(output, "feat-a") {
+		t.Error("expected feat-a in output")
+	}
+	if !strings.Contains(output, "feat-b") {
+		t.Error("expected feat-b in output")
+	}
+	if !strings.Contains(output, "Name:") {
+		t.Error("expected Name: label")
+	}
+	if !strings.Contains(output, "Branch:") {
+		t.Error("expected Branch: label")
+	}
+	if !strings.Contains(output, "State:") {
+		t.Error("expected State: label")
+	}
+	if !strings.Contains(output, "Dirty:") {
+		t.Error("expected Dirty: label")
+	}
+}
+
+func TestPrintBranchesList_WithDescription(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active", Description: "working on auth"},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	if !strings.Contains(output, "Description:") {
+		t.Error("expected Description: label")
+	}
+	if !strings.Contains(output, "working on auth") {
+		t.Error("expected description text in output")
+	}
+}
+
+func TestPrintBranchesList_WithoutDescription(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active"},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	if strings.Contains(output, "Description:") {
+		t.Error("should not show Description: label when no description set")
+	}
+}
+
+func TestPrintBranchesList_OptionalFields(t *testing.T) {
+	infos := []BranchInfo{
+		{
+			Path:        "/repos/feat-a",
+			Name:        "feat-a",
+			Branch:      "feat-a",
+			State:       "review",
+			Ticket:      "PROJ-123",
+			MergeURL:    "https://github.com/org/repo/pull/42",
+			Description: "refactoring login",
+		},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	if !strings.Contains(output, "Ticket:") {
+		t.Error("expected Ticket: label")
+	}
+	if !strings.Contains(output, "PROJ-123") {
+		t.Error("expected ticket value")
+	}
+	if !strings.Contains(output, "Merge URL:") {
+		t.Error("expected Merge URL: label")
+	}
+	if !strings.Contains(output, "https://github.com/org/repo/pull/42") {
+		t.Error("expected merge URL value")
+	}
+	if !strings.Contains(output, "Description:") {
+		t.Error("expected Description: label")
+	}
+	if !strings.Contains(output, "refactoring login") {
+		t.Error("expected description value")
+	}
+}
+
+func TestPrintBranchesList_HidesEmptyOptionalFields(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", State: "active"},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	if strings.Contains(output, "Ticket:") {
+		t.Error("should not show Ticket: when empty")
+	}
+	if strings.Contains(output, "Merge URL:") {
+		t.Error("should not show Merge URL: when empty")
+	}
+	if strings.Contains(output, "Description:") {
+		t.Error("should not show Description: when empty")
+	}
+}
+
+func TestPrintBranchesList_RemoteBranch(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/feat-a", Name: "feat-a", Branch: "feat-a", Remote: true},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	if !strings.Contains(output, "feat-a*") {
+		t.Error("expected asterisk for remote branch")
+	}
+}
+
+func TestPrintBranchesList_Empty(t *testing.T) {
+	output := captureStdout(t, func() {
+		PrintBranchesList(nil)
+	})
+
+	if !strings.Contains(output, "No branches found.") {
+		t.Error("expected 'No branches found.' message")
+	}
+}
+
+func TestPrintBranchesList_DirtyDisplay(t *testing.T) {
+	infos := []BranchInfo{
+		{Path: "/repos/clean", Name: "clean", Branch: "clean", State: "active", Dirty: false},
+		{Path: "/repos/dirty", Name: "dirty", Branch: "dirty", State: "active", Dirty: true},
+	}
+
+	output := captureStdout(t, func() {
+		PrintBranchesList(infos)
+	})
+
+	// Should contain "yes" for dirty and "no" for clean
+	if !strings.Contains(output, "yes") {
+		t.Error("expected 'yes' for dirty branch")
+	}
+	if !strings.Contains(output, "no") {
+		t.Error("expected 'no' for clean branch")
+	}
+}

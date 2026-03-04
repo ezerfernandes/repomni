@@ -27,8 +27,9 @@ If no directory is specified, the current directory is used.`,
 }
 
 var (
-	branchesState string
-	branchesJSON  bool
+	branchesState    string
+	branchesJSON     bool
+	branchesDetailed bool
 )
 
 func init() {
@@ -36,6 +37,7 @@ func init() {
 	branchesCmd.Flags().StringVar(&branchesState, "state", "",
 		"filter by workflow state (e.g., active, review, closed, paused)")
 	branchesCmd.Flags().BoolVar(&branchesJSON, "json", false, "output as JSON")
+	branchesCmd.Flags().BoolVar(&branchesDetailed, "detailed", false, "show detailed vertical list with descriptions")
 }
 
 func runBranches(cmd *cobra.Command, args []string) error {
@@ -77,7 +79,11 @@ func runBranches(cmd *cobra.Command, args []string) error {
 		return enc.Encode(infos)
 	}
 
-	ui.PrintBranchesTable(infos)
+	if branchesDetailed {
+		ui.PrintBranchesList(infos)
+	} else {
+		ui.PrintBranchesTable(infos)
+	}
 	return nil
 }
 
@@ -101,6 +107,7 @@ func collectBranchInfo(repoPath string) ui.BranchInfo {
 			info.State = cfg.State
 			info.MergeURL = cfg.MergeURL
 			info.Ticket = cfg.Ticket
+			info.Description = cfg.Description
 			info.Remote = cfg.Remote
 		}
 	}
