@@ -523,6 +523,57 @@ func TestSaveAndLoad_WithTicket(t *testing.T) {
 	}
 }
 
+func TestSaveAndLoad_WithDescription(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	original := &RepoConfig{
+		Version:     1,
+		State:       "active",
+		Description: "working on auth refactor",
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.Description != "working on auth refactor" {
+		t.Errorf("Description mismatch: got %q, want %q", loaded.Description, "working on auth refactor")
+	}
+}
+
+func TestSaveAndLoad_WithoutDescription(t *testing.T) {
+	tmpDir := t.TempDir()
+	gitDir := filepath.Join(tmpDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	original := &RepoConfig{
+		Version: 1,
+		State:   "active",
+	}
+
+	if err := Save(gitDir, original); err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	loaded, err := Load(gitDir)
+	if err != nil {
+		t.Fatalf("Load failed: %v", err)
+	}
+	if loaded.Description != "" {
+		t.Errorf("Description should be empty, got %q", loaded.Description)
+	}
+}
+
 func TestSaveAndLoad_WithoutTicket(t *testing.T) {
 	tmpDir := t.TempDir()
 	gitDir := filepath.Join(tmpDir, ".git")

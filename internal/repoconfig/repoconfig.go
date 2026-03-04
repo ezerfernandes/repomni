@@ -16,8 +16,9 @@ type RepoConfig struct {
 	Version  int              `yaml:"version"`
 	State    string           `yaml:"state,omitempty"`
 	MergeURL string           `yaml:"merge_url,omitempty"`
-	Ticket   string           `yaml:"ticket,omitempty"`
-	Remote   bool             `yaml:"remote,omitempty"`
+	Ticket      string           `yaml:"ticket,omitempty"`
+	Description string           `yaml:"description,omitempty"`
+	Remote      bool             `yaml:"remote,omitempty"`
 	Items    []RepoItemConfig `yaml:"items"`
 }
 
