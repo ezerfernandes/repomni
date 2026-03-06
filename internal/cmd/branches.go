@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/ezerfernandes/repomni/internal/commitfmt"
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
 	"github.com/ezerfernandes/repomni/internal/ui"
@@ -108,6 +109,11 @@ func collectBranchInfo(repoPath string) ui.BranchInfo {
 	dirty, err := gitutil.IsDirty(repoPath)
 	if err == nil {
 		info.Dirty = dirty
+	}
+
+	subject, err := gitutil.LastCommitSubject(repoPath)
+	if err == nil && subject != "" {
+		info.LastCommit = commitfmt.Normalize(subject)
 	}
 
 	return info

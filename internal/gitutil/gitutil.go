@@ -178,3 +178,13 @@ func stashPop(dir string) error {
 	_, err := RunGit(dir, "stash", "pop")
 	return err
 }
+
+// LastCommitSubject returns the subject line of the most recent commit in dir.
+// Returns ("", nil) if there are no commits.
+func LastCommitSubject(dir string) (string, error) {
+	out, err := RunGit(dir, "log", "-1", "--format=%s")
+	if err != nil {
+		return "", nil
+	}
+	return out, nil
+}

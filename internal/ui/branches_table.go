@@ -13,8 +13,9 @@ type BranchInfo struct {
 	State    string `json:"state"`
 	MergeURL string `json:"merge_url,omitempty"`
 	Ticket   string `json:"ticket,omitempty"`
-	Dirty    bool   `json:"dirty"`
-	Remote   bool   `json:"remote"`
+	LastCommit string `json:"last_commit,omitempty"`
+	Dirty      bool   `json:"dirty"`
+	Remote     bool   `json:"remote"`
 }
 
 // PrintBranchesTable renders a colored table of branch repos.
@@ -22,9 +23,11 @@ func PrintBranchesTable(infos []BranchInfo) {
 	nameW := len("Name")
 	stateW := len("State")
 	ticketW := 0
+	commitW := 0
 	hasDiffers := false
 	hasRemote := false
 	hasTicket := false
+	hasCommit := false
 	for _, info := range infos {
 		display := info.Name
 		if info.Remote {
@@ -50,28 +53,27 @@ func PrintBranchesTable(infos []BranchInfo) {
 				ticketW = len(info.Ticket)
 			}
 		}
+		if info.LastCommit != "" {
+			hasCommit = true
+			if len(info.LastCommit) > commitW {
+				commitW = len(info.LastCommit)
+			}
+		}
 	}
 	if hasTicket && ticketW < len("Ticket") {
 		ticketW = len("Ticket")
 	}
+	if hasCommit && commitW < len("Last Commit") {
+		commitW = len("Last Commit")
+	}
+	// Cap commit column width to keep the table readable.
+	const maxCommitW = 50
+	if commitW > maxCommitW {
+		commitW = maxCommitW
+	}
 
 	fmt.Println()
-	if hasTicket {
-		hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%-%ds  %%s\n", nameW, stateW, ticketW)
-		fmt.Printf(hdrFmt, "Name", "State", "Ticket", "Dirty")
-		fmt.Printf(hdrFmt,
-			strings.Repeat("─", nameW),
-			strings.Repeat("─", stateW),
-			strings.Repeat("─", ticketW),
-			strings.Repeat("─", 5))
-	} else {
-		hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%s\n", nameW, stateW)
-		fmt.Printf(hdrFmt, "Name", "State", "Dirty")
-		fmt.Printf(hdrFmt,
-			strings.Repeat("─", nameW),
-			strings.Repeat("─", stateW),
-			strings.Repeat("─", 5))
-	}
+	printHeader(nameW, stateW, ticketW, commitW, hasTicket, hasCommit)
 
 	for _, info := range infos {
 		dirty := " "
@@ -95,18 +97,20 @@ func PrintBranchesTable(infos []BranchInfo) {
 			pad = 0
 		}
 
-		if hasTicket {
-			fmt.Printf("  %-*s  %s%s  %-*s  %s\n",
-				nameW, display,
-				stateDisplay, strings.Repeat(" ", pad),
-				ticketW, info.Ticket,
-				dirty)
-		} else {
-			fmt.Printf("  %-*s  %s%s  %s\n",
-				nameW, display,
-				stateDisplay, strings.Repeat(" ", pad),
-				dirty)
+		commit := info.LastCommit
+		if len(commit) > commitW && commitW > 0 {
+			commit = commit[:commitW-1] + "…"
 		}
+
+		parts := fmt.Sprintf("  %-*s  %s%s", nameW, display, stateDisplay, strings.Repeat(" ", pad))
+		if hasTicket {
+			parts += fmt.Sprintf("  %-*s", ticketW, info.Ticket)
+		}
+		parts += fmt.Sprintf("  %s", dirty)
+		if hasCommit {
+			parts += fmt.Sprintf("  %s", commit)
+		}
+		fmt.Println(parts)
 	}
 
 	if hasRemote || hasDiffers {
@@ -119,4 +123,21 @@ func PrintBranchesTable(infos []BranchInfo) {
 		}
 	}
 	fmt.Println()
+}
+
+func printHeader(nameW, stateW, ticketW, commitW int, hasTicket, hasCommit bool) {
+	hdr := fmt.Sprintf("  %-*s  %-*s", nameW, "Name", stateW, "State")
+	sep := fmt.Sprintf("  %s  %s", strings.Repeat("─", nameW), strings.Repeat("─", stateW))
+	if hasTicket {
+		hdr += fmt.Sprintf("  %-*s", ticketW, "Ticket")
+		sep += fmt.Sprintf("  %s", strings.Repeat("─", ticketW))
+	}
+	hdr += fmt.Sprintf("  %s", "Dirty")
+	sep += fmt.Sprintf("  %s", strings.Repeat("─", 5))
+	if hasCommit {
+		hdr += fmt.Sprintf("  %s", "Last Commit")
+		sep += fmt.Sprintf("  %s", strings.Repeat("─", commitW))
+	}
+	fmt.Println(hdr)
+	fmt.Println(sep)
 }

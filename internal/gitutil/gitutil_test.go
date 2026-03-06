@@ -617,3 +617,28 @@ func TestPullMergeAutoStash(t *testing.T) {
 		t.Errorf("expected README.md to contain stashed changes, got %q", string(content))
 	}
 }
+
+func TestLastCommitSubject(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+
+	subject, err := LastCommitSubject(cloneDir)
+	if err != nil {
+		t.Fatalf("LastCommitSubject failed: %v", err)
+	}
+	if subject != "initial commit" {
+		t.Errorf("expected %q, got %q", "initial commit", subject)
+	}
+}
+
+func TestLastCommitSubjectNoCommits(t *testing.T) {
+	repo := t.TempDir()
+	initGitRepo(t, repo)
+
+	subject, err := LastCommitSubject(repo)
+	if err != nil {
+		t.Fatalf("LastCommitSubject failed: %v", err)
+	}
+	if subject != "" {
+		t.Errorf("expected empty subject, got %q", subject)
+	}
+}
