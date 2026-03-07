@@ -1087,14 +1087,11 @@ func TestStatusCopyMode(t *testing.T) {
 		if !s.Present {
 			t.Errorf("%s should be present after copy inject", s.Item.TargetPath)
 		}
-		// Copy-mode items are regular files, not symlinks, so Current should be false
-		// and Detail should mention "regular file/dir"
-		if s.Item.TargetPath != ".claude/skills/test.md" {
-			// File items in copy mode are detected as regular files
-			if s.Detail != "regular file/dir (not a symlink)" {
-				// Accept both detail messages — env files found via parent search are regular files
-				continue
-			}
+		if !s.Current {
+			t.Errorf("%s should be current after copy inject, got detail: %s", s.Item.TargetPath, s.Detail)
+		}
+		if s.Detail != "copy ok" {
+			t.Errorf("%s expected detail 'copy ok', got %q", s.Item.TargetPath, s.Detail)
 		}
 	}
 }

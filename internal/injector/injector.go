@@ -411,8 +411,11 @@ func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 			} else {
 				status.Detail = "cannot read symlink"
 			}
+		} else if filesEqual(src, dst) {
+			status.Current = true
+			status.Detail = "copy ok"
 		} else {
-			status.Detail = "regular file/dir (not a symlink)"
+			status.Detail = "copy out of date"
 		}
 
 		statuses = append(statuses, status)
@@ -665,8 +668,11 @@ func statusDir(item config.Item, src, dst string, excludeSet map[string]bool) []
 			} else {
 				status.Detail = "cannot read symlink"
 			}
+		} else if filesEqual(entrySrc, entryDst) {
+			status.Current = true
+			status.Detail = "copy ok"
 		} else {
-			status.Detail = "regular file/dir (not a symlink)"
+			status.Detail = "copy out of date"
 		}
 
 		statuses = append(statuses, status)
