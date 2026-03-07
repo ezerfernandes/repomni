@@ -44,22 +44,24 @@ func init() {
 	syncCodeCmd.Flags().BoolVar(&syncCodeJSON, "json", false, "output as JSON")
 }
 
-func runSyncCode(cmd *cobra.Command, args []string) error {
+// gatherSyncCode runs the sync-code operation and returns the raw results
+// without printing anything. Used by runSyncAll for combined JSON output.
+func gatherSyncCode(args []string) ([]syncer.SyncResult, syncer.SyncSummary, error) {
 	target := "."
 	if len(args) > 0 {
 		target = args[0]
 	}
 	target, err := filepath.Abs(target)
 	if err != nil {
-		return err
+		return nil, syncer.SyncSummary{}, err
 	}
 
 	repos, err := gitutil.FindGitRepos(target)
 	if err != nil {
-		return err
+		return nil, syncer.SyncSummary{}, err
 	}
 	if len(repos) == 0 {
-		return fmt.Errorf("no git repositories found under %s", target)
+		return nil, syncer.SyncSummary{}, fmt.Errorf("no git repositories found under %s", target)
 	}
 
 	opts := syncer.SyncOptions{
@@ -71,6 +73,14 @@ func runSyncCode(cmd *cobra.Command, args []string) error {
 	}
 
 	results, summary := syncer.SyncAll(repos, opts)
+	return results, summary, nil
+}
+
+func runSyncCode(cmd *cobra.Command, args []string) error {
+	results, summary, err := gatherSyncCode(args)
+	if err != nil {
+		return err
+	}
 
 	if syncCodeJSON {
 		return ui.PrintSyncJSON(results, summary)

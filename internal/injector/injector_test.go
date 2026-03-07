@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/ezerfernandes/repomni/internal/config"
+	"github.com/ezerfernandes/repomni/internal/gitutil"
 )
 
 func setupTestEnv(t *testing.T) (sourceDir, targetDir string, cfg *config.Config) {
@@ -1086,14 +1087,11 @@ func TestStatusCopyMode(t *testing.T) {
 		if !s.Present {
 			t.Errorf("%s should be present after copy inject", s.Item.TargetPath)
 		}
-		// Copy-mode items are regular files, not symlinks, so Current should be false
-		// and Detail should mention "regular file/dir"
-		if s.Item.TargetPath != ".claude/skills/test.md" {
-			// File items in copy mode are detected as regular files
-			if s.Detail != "regular file/dir (not a symlink)" {
-				// Accept both detail messages — env files found via parent search are regular files
-				continue
-			}
+		if !s.Current {
+			t.Errorf("%s should be current after copy inject, got detail: %s", s.Item.TargetPath, s.Detail)
+		}
+		if s.Detail != "copy ok" {
+			t.Errorf("%s expected detail 'copy ok', got %q", s.Item.TargetPath, s.Detail)
 		}
 	}
 }
@@ -1191,6 +1189,387 @@ func TestStatusDir_SourceNotReadable(t *testing.T) {
 	}
 	if statuses[0].Present {
 		t.Error("should not be present")
+	}
+}
+
+// --- Regression tests for Finding 1: Eject must not delete user-owned files ---
+
+func TestEjectDoesNotDeleteUserOwnedFileAtManagedPath(t *testing.T) {
+	// If a user has their own .envrc and repomni never injected one,
+	// eject must not delete it.
+	rootDir := t.TempDir()
+	sourceDir := filepath.Join(rootDir, "source")
+	targetDir := filepath.Join(rootDir, "target")
+	os.MkdirAll(sourceDir, 0755)
+	os.MkdirAll(targetDir, 0755)
+	exec.Command("git", "init", targetDir).Run()
+
+	os.MkdirAll(filepath.Join(sourceDir, "skills"), 0755)
+	os.WriteFile(filepath.Join(sourceDir, "skills", "test.md"), []byte("skill"), 0644)
+	os.WriteFile(filepath.Join(sourceDir, "hooks.json"), []byte(`{"hooks":[]}`), 0644)
+
+	// Only enable skills (not .env/.envrc) to inject
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	// Inject just skills
+	_, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	// Now the user manually creates a .envrc in their repo
+	os.WriteFile(filepath.Join(targetDir, ".envrc"), []byte("my own envrc"), 0644)
+
+	// Switch to a config that includes .envrc as a managed path
+	cfgWithEnv := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+			{Type: config.ItemTypeFile, SourcePath: ".envrc", TargetPath: ".envrc", Enabled: true},
+		},
+	}
+
+	// Eject with the wider config — .envrc must NOT be deleted
+	results, err := Eject(cfgWithEnv, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	// Verify .envrc was skipped (not managed by repomni)
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" && r.Action == "removed" {
+			t.Error(".envrc should NOT be removed — it was created by the user, not repomni")
+		}
+	}
+
+	// The user's file must still exist
+	content, err := os.ReadFile(filepath.Join(targetDir, ".envrc"))
+	if err != nil {
+		t.Fatal("user's .envrc was deleted by eject")
+	}
+	if string(content) != "my own envrc" {
+		t.Error("user's .envrc content was modified")
+	}
+}
+
+func TestEjectDoesNotDeleteUserFilesInManagedDirectory(t *testing.T) {
+	// If a user creates a file inside a managed directory (e.g. .claude/skills/my-skill.md),
+	// and repomni did not inject that file, eject must not delete it.
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeCopy,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	// Inject in copy mode
+	_, err := Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	// User manually adds their own skill file
+	userSkill := filepath.Join(targetDir, ".claude", "skills", "my-custom-skill.md")
+	os.WriteFile(userSkill, []byte("user skill"), 0644)
+
+	// Eject
+	_, err = Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	// The injected file (test.md) should be removed
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "test.md")); err == nil {
+		t.Error("injected test.md should be removed after eject")
+	}
+
+	// The user's custom skill must still exist
+	content, err := os.ReadFile(userSkill)
+	if err != nil {
+		t.Fatal("user's custom skill was deleted by eject")
+	}
+	if string(content) != "user skill" {
+		t.Error("user's custom skill content was modified")
+	}
+}
+
+// --- Regression tests for Finding 2: Eject must not depend on live source tree ---
+
+func TestEjectCleansUpRenamedSourceEntry(t *testing.T) {
+	// If a source entry was injected and later renamed in the source directory,
+	// eject must still clean up the original injected file.
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	// Add an extra skill to source
+	os.WriteFile(filepath.Join(sourceDir, "skills", "old-skill.md"), []byte("old"), 0644)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	// Inject both skills
+	_, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	// Verify both were injected
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "old-skill.md")); err != nil {
+		t.Fatal("old-skill.md should exist after inject")
+	}
+
+	// Rename the source entry (simulating source evolution)
+	os.Rename(
+		filepath.Join(sourceDir, "skills", "old-skill.md"),
+		filepath.Join(sourceDir, "skills", "new-skill.md"),
+	)
+
+	// Eject — old-skill.md must still be cleaned up even though source no longer has it
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	// old-skill.md should have been removed
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "old-skill.md")); err == nil {
+		t.Error("old-skill.md should be removed after eject, even though source was renamed")
+	}
+
+	foundOldRemoved := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".claude/skills/old-skill.md" && r.Action == "removed" {
+			foundOldRemoved = true
+		}
+	}
+	if !foundOldRemoved {
+		t.Error("expected old-skill.md removal in eject results")
+	}
+}
+
+func TestEjectCleansUpDeletedSourceEntry(t *testing.T) {
+	// If a source entry was injected and later deleted from the source directory,
+	// eject must still clean up the injected file.
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	os.WriteFile(filepath.Join(sourceDir, "skills", "ephemeral.md"), []byte("temp"), 0644)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	_, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	// Delete the source entry
+	os.Remove(filepath.Join(sourceDir, "skills", "ephemeral.md"))
+
+	// Eject
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "ephemeral.md")); err == nil {
+		t.Error("ephemeral.md should be removed after eject, even though source was deleted")
+	}
+
+	foundRemoved := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".claude/skills/ephemeral.md" && r.Action == "removed" {
+			foundRemoved = true
+		}
+	}
+	if !foundRemoved {
+		t.Error("expected ephemeral.md removal in eject results")
+	}
+}
+
+func TestEjectCopyModeWhenSourceUnavailable(t *testing.T) {
+	// In copy mode, if the source directory becomes unavailable after injection,
+	// eject must still clean up all injected copies using the manifest.
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeCopy,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	_, err := Inject(cfg, targetDir, Options{Mode: config.ModeCopy})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	// Verify test.md was injected
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "test.md")); err != nil {
+		t.Fatal("test.md should exist after inject")
+	}
+
+	// Remove the entire source directory (simulating unavailability)
+	os.RemoveAll(sourceDir)
+
+	// Eject — must still remove the copied file
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	if _, err := os.Lstat(filepath.Join(targetDir, ".claude", "skills", "test.md")); err == nil {
+		t.Error("test.md should be removed after eject, even when source is unavailable")
+	}
+
+	foundRemoved := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".claude/skills/test.md" && r.Action == "removed" {
+			foundRemoved = true
+		}
+	}
+	if !foundRemoved {
+		t.Error("expected test.md removal in eject results when source unavailable")
+	}
+}
+
+// --- Manifest persistence tests ---
+
+func TestManifestSavedOnInject(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	_, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+
+	if len(manifest.Entries) == 0 {
+		t.Fatal("manifest should have entries after inject")
+	}
+
+	// Check that known injected paths are present
+	if !manifest.Has(".claude/skills/test.md") {
+		t.Error("manifest should contain .claude/skills/test.md")
+	}
+}
+
+func TestManifestClearedOnEject(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	Eject(cfg, targetDir)
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+
+	if len(manifest.Entries) != 0 {
+		t.Error("manifest should be empty after eject")
+	}
+}
+
+func TestManifestNotSavedOnDryRun(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	_, err := Inject(cfg, targetDir, Options{DryRun: true})
+	if err != nil {
+		t.Fatalf("Inject dry-run failed: %v", err)
+	}
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+
+	if len(manifest.Entries) != 0 {
+		t.Error("manifest should not be saved during dry run")
+	}
+}
+
+func TestInjectDoesNotManifestSkippedRegularFile(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	// Pre-existing regular file at a managed path should not become repomni-owned.
+	envrcPath := filepath.Join(targetDir, ".envrc")
+	if err := os.WriteFile(envrcPath, []byte("user-owned"), 0644); err != nil {
+		t.Fatalf("write .envrc: %v", err)
+	}
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	foundSkip := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" && r.Action == "skipped" {
+			foundSkip = true
+		}
+	}
+	if !foundSkip {
+		t.Fatal("expected .envrc to be skipped")
+	}
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+	if manifest.Has(".envrc") {
+		t.Error("manifest should not claim ownership of a pre-existing regular file")
+	}
+}
+
+func TestEjectRefusesCleanupWithoutManifest(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	envrcPath := filepath.Join(targetDir, ".envrc")
+	if err := os.WriteFile(envrcPath, []byte("user-owned"), 0644); err != nil {
+		t.Fatalf("write .envrc: %v", err)
+	}
+
+	results, err := Eject(cfg, targetDir)
+	if err == nil {
+		t.Fatal("expected eject to refuse cleanup without a manifest")
+	}
+
+	foundRefusal := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" && r.Detail == "manifest missing; refusing to delete" {
+			foundRefusal = true
+		}
+	}
+	if !foundRefusal {
+		t.Error("expected .envrc refusal result when manifest is missing")
+	}
+
+	content, readErr := os.ReadFile(envrcPath)
+	if readErr != nil {
+		t.Fatalf(".envrc should still exist: %v", readErr)
+	}
+	if string(content) != "user-owned" {
+		t.Error(".envrc content changed during refused eject")
 	}
 }
 
