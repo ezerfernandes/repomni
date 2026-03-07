@@ -42,22 +42,24 @@ func init() {
 	syncStateCmd.Flags().BoolVar(&syncStateJSON, "json", false, "output as JSON")
 }
 
-func runSyncState(cmd *cobra.Command, args []string) error {
+// gatherSyncState runs the sync-state operation and returns the raw results
+// without printing anything. Used by runSyncAll for combined JSON output.
+func gatherSyncState(args []string) ([]mergestatus.Result, mergestatus.Summary, error) {
 	target := "."
 	if len(args) > 0 {
 		target = args[0]
 	}
 	target, err := filepath.Abs(target)
 	if err != nil {
-		return err
+		return nil, mergestatus.Summary{}, err
 	}
 
 	repos, err := gitutil.FindGitRepos(target)
 	if err != nil {
-		return err
+		return nil, mergestatus.Summary{}, err
 	}
 	if len(repos) == 0 {
-		return fmt.Errorf("no git repositories found under %s", target)
+		return nil, mergestatus.Summary{}, fmt.Errorf("no git repositories found under %s", target)
 	}
 
 	reviewStates := mergestatus.ReviewStates()
@@ -117,9 +119,13 @@ func runSyncState(cmd *cobra.Command, args []string) error {
 		results = append(results, result)
 	}
 
-	if summary.Total == 0 {
-		fmt.Println("No repos with active merge requests found.")
-		return nil
+	return results, summary, nil
+}
+
+func runSyncState(cmd *cobra.Command, args []string) error {
+	results, summary, err := gatherSyncState(args)
+	if err != nil {
+		return err
 	}
 
 	if syncStateJSON {
@@ -130,6 +136,11 @@ func runSyncState(cmd *cobra.Command, args []string) error {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 		return enc.Encode(out)
+	}
+
+	if summary.Total == 0 {
+		fmt.Println("No repos with active merge requests found.")
+		return nil
 	}
 
 	printSyncStateResults(results, summary)

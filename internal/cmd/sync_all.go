@@ -1,10 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 
+	"github.com/ezerfernandes/repomni/internal/mergestatus"
+	"github.com/ezerfernandes/repomni/internal/syncer"
 	"github.com/spf13/cobra"
 )
 
@@ -57,15 +61,17 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	syncStateDryRun = syncAllDryRun
 	syncStateJSON = syncAllJSON
 
+	if syncAllJSON {
+		return runSyncAllJSON(args)
+	}
+
 	var errs []string
 
 	if err := runSyncCode(cmd, args); err != nil {
 		errs = append(errs, fmt.Sprintf("sync-code: %v", err))
 	}
 
-	if !syncAllJSON {
-		fmt.Println()
-	}
+	fmt.Println()
 
 	if err := runSyncState(cmd, args); err != nil {
 		errs = append(errs, fmt.Sprintf("sync-state: %v", err))
@@ -76,4 +82,43 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// runSyncAllJSON gathers results from both sub-commands and emits a single
+// JSON document to stdout.
+func runSyncAllJSON(args []string) error {
+	var errs []string
+
+	codeResults, codeSummary, codeErr := gatherSyncCode(args)
+	if codeErr != nil {
+		errs = append(errs, fmt.Sprintf("sync-code: %v", codeErr))
+	}
+
+	stateResults, stateSummary, stateErr := gatherSyncState(args)
+	if stateErr != nil {
+		errs = append(errs, fmt.Sprintf("sync-state: %v", stateErr))
+	}
+
+	out := struct {
+		Code struct {
+			Results []syncer.SyncResult `json:"results"`
+			Summary syncer.SyncSummary  `json:"summary"`
+		} `json:"code"`
+		State struct {
+			Results []mergestatus.Result `json:"results"`
+			Summary mergestatus.Summary  `json:"summary"`
+		} `json:"state"`
+		Errors []string `json:"errors,omitempty"`
+	}{}
+	out.Code.Results = codeResults
+	out.Code.Summary = codeSummary
+	out.State.Results = stateResults
+	out.State.Summary = stateSummary
+	if len(errs) > 0 {
+		out.Errors = errs
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(out)
 }
