@@ -61,12 +61,21 @@ func runEject(cmd *cobra.Command, args []string) error {
 
 	hasErrors := false
 	for _, t := range targets {
+		targetCfg := cfg
+		repoCfg, _ := loadRepoConfig(t)
+		if repoCfg != nil {
+			targetCfg = repoCfg.FilterGlobalConfig(cfg)
+		}
+
 		if ejectAll {
 			fmt.Printf("\nEjecting from %s...\n", t)
 		}
 
-		results, err := injector.Eject(cfg, t)
+		results, err := injector.Eject(targetCfg, t)
 		if err != nil {
+			if len(results) > 0 {
+				ui.PrintResults(results)
+			}
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			hasErrors = true
 			continue

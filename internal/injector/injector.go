@@ -106,6 +106,7 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 
 	var results []Result
 	var excludePaths []string
+	manifest := LoadManifest(gitDir)
 
 	// Search parent directories for .env/.envrc files
 	envSearch := findEnvInParents(targetDir)
@@ -141,7 +142,7 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 
 		// Directory items get per-entry merging
 		if srcInfo.IsDir() {
-			dirResults, dirExcludes := injectDirMerged(item, src, dst, mode, opts)
+			dirResults, dirExcludes := injectDirMerged(item, src, dst, mode, opts, manifest)
 			results = append(results, dirResults...)
 			excludePaths = append(excludePaths, dirExcludes...)
 			continue
@@ -180,12 +181,28 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 
 		results = append(results, result)
 		excludePaths = append(excludePaths, item.TargetPath)
+
+		// Record in manifest only for paths we can safely attribute to repomni.
+		if shouldRecordManagedPath(result, mode) {
+			manifest.Add(ManifestEntry{
+				TargetPath: item.TargetPath,
+				SourcePath: src,
+				Mode:       string(mode),
+			})
+		}
 	}
 
 	// Update .git/info/exclude
 	if !opts.DryRun && len(excludePaths) > 0 {
 		if err := UpdateExclude(gitDir, excludePaths); err != nil {
 			return results, fmt.Errorf("failed to update .git/info/exclude: %w", err)
+		}
+	}
+
+	// Persist manifest
+	if !opts.DryRun {
+		if err := SaveManifest(gitDir, manifest); err != nil {
+			return results, fmt.Errorf("failed to save manifest: %w", err)
 		}
 	}
 
@@ -204,9 +221,9 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 		return nil, err
 	}
 
-	sourceDir, err := filepath.Abs(cfg.SourceDir)
-	if err != nil {
-		return nil, fmt.Errorf("cannot resolve source path: %w", err)
+	manifest := LoadManifest(gitDir)
+	if len(manifest.Entries) == 0 {
+		return refuseEjectWithoutManifest(cfg, targetDir)
 	}
 
 	var results []Result
@@ -216,10 +233,17 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 
 		// Directory items get per-entry ejection
 		if item.Type == config.ItemTypeDirectory {
-			dirResults := ejectDir(item, sourceDir, targetDir)
+			dirResults := ejectDirByManifest(item, targetDir, manifest)
 			results = append(results, dirResults...)
+			reconcileManifest(dirResults, manifest)
 			// Clean up the directory itself if now empty
 			removeIfEmptyDir(dst)
+			continue
+		}
+
+		// For file items, check manifest first
+		if !manifest.Has(item.TargetPath) {
+			results = append(results, Result{Item: item, Action: "skipped", Detail: "not managed by repomni"})
 			continue
 		}
 
@@ -234,12 +258,14 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
 			} else {
 				results = append(results, Result{Item: item, Action: "removed", Detail: "symlink removed"})
+				manifest.Remove(item.TargetPath)
 			}
 		} else {
 			if err := os.Remove(dst); err != nil {
 				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove file: %v", err)})
 			} else {
 				results = append(results, Result{Item: item, Action: "removed", Detail: "file removed"})
+				manifest.Remove(item.TargetPath)
 			}
 		}
 	}
@@ -253,8 +279,52 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 		}
 	}
 
-	if err := CleanExclude(gitDir); err != nil {
-		return results, fmt.Errorf("failed to clean .git/info/exclude: %w", err)
+	if len(manifest.Entries) == 0 {
+		if err := CleanExclude(gitDir); err != nil {
+			return results, fmt.Errorf("failed to clean .git/info/exclude: %w", err)
+		}
+		if err := ClearManifest(gitDir); err != nil {
+			return results, fmt.Errorf("failed to clear manifest: %w", err)
+		}
+		return results, nil
+	}
+
+	if err := UpdateExclude(gitDir, manifest.TargetPaths()); err != nil {
+		return results, fmt.Errorf("failed to update .git/info/exclude: %w", err)
+	}
+	if err := SaveManifest(gitDir, manifest); err != nil {
+		return results, fmt.Errorf("failed to save manifest: %w", err)
+	}
+
+	return results, nil
+}
+
+func refuseEjectWithoutManifest(cfg *config.Config, targetDir string) ([]Result, error) {
+	var (
+		results     []Result
+		foundTarget bool
+	)
+
+	for _, item := range cfg.EnabledItems() {
+		dst := filepath.Join(targetDir, item.TargetPath)
+		if _, err := os.Lstat(dst); err != nil {
+			results = append(results, Result{Item: item, Action: "skipped", Detail: "not present"})
+			continue
+		}
+
+		foundTarget = true
+		results = append(results, Result{
+			Item:   item,
+			Action: "skipped",
+			Detail: "manifest missing; refusing to delete",
+		})
+	}
+
+	if foundTarget {
+		return results, fmt.Errorf(
+			"refusing to eject from %s without repomni manifest; run inject again to recreate metadata or remove managed paths manually",
+			targetDir,
+		)
 	}
 
 	return results, nil
@@ -354,7 +424,7 @@ func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 // injectDirMerged creates per-entry symlinks or copies inside the target directory,
 // merging with any existing content. Entries that already exist in the target
 // with the same name are skipped with a warning.
-func injectDirMerged(item config.Item, src, dst string, mode config.InjectionMode, opts Options) ([]Result, []string) {
+func injectDirMerged(item config.Item, src, dst string, mode config.InjectionMode, opts Options, manifest *Manifest) ([]Result, []string) {
 	entries, err := os.ReadDir(src)
 	if err != nil {
 		return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot read source directory: %v", err)}}, nil
@@ -413,6 +483,13 @@ func injectDirMerged(item config.Item, src, dst string, mode config.InjectionMod
 				target, _ := os.Readlink(entryDst)
 				if target == entrySrc {
 					results = append(results, Result{Item: subItem, Action: "skipped", Detail: "already up to date"})
+					if mode == config.ModeSymlink {
+						manifest.Add(ManifestEntry{
+							TargetPath: subItem.TargetPath,
+							SourcePath: entrySrc,
+							Mode:       string(mode),
+						})
+					}
 					excludes = append(excludes, entryExclude)
 					continue
 				}
@@ -442,17 +519,21 @@ func injectDirMerged(item config.Item, src, dst string, mode config.InjectionMod
 			}
 			results = append(results, Result{Item: subItem, Action: "created", Detail: "copied"})
 		}
+		manifest.Add(ManifestEntry{
+			TargetPath: subItem.TargetPath,
+			SourcePath: entrySrc,
+			Mode:       string(mode),
+		})
 		excludes = append(excludes, entryExclude)
 	}
 
 	return results, excludes
 }
 
-// ejectDir removes injected entries from a directory item. If the target path
-// is itself a symlink (old-style injection), it removes the whole symlink.
-// Otherwise it removes individual entries that match the source directory contents.
-func ejectDir(item config.Item, sourceDir, targetDir string) []Result {
-	src := filepath.Join(sourceDir, item.SourcePath)
+// ejectDirByManifest removes injected entries from a directory item using the
+// persisted manifest instead of the live source tree. This ensures cleanup is
+// correct even when source entries have been renamed or removed after injection.
+func ejectDirByManifest(item config.Item, targetDir string, manifest *Manifest) []Result {
 	dst := filepath.Join(targetDir, item.TargetPath)
 
 	// Check if target exists at all
@@ -461,34 +542,34 @@ func ejectDir(item config.Item, sourceDir, targetDir string) []Result {
 		return []Result{{Item: item, Action: "skipped", Detail: "not present"}}
 	}
 
-	// Old-style: whole directory is a symlink — remove it
+	// Old-style: whole directory is a symlink
 	if info.Mode()&os.ModeSymlink != 0 {
-		if err := os.Remove(dst); err != nil {
-			return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)}}
+		if manifest.Has(item.TargetPath) {
+			if err := os.Remove(dst); err != nil {
+				return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)}}
+			}
+			return []Result{{Item: item, Action: "removed", Detail: "directory symlink removed"}}
 		}
-		return []Result{{Item: item, Action: "removed", Detail: "directory symlink removed"}}
+		return []Result{{Item: item, Action: "skipped", Detail: "not managed by repomni"}}
 	}
 
-	// New-style: directory with individual entries
-	// Read source to know what entries we injected
-	entries, err := os.ReadDir(src)
-	if err != nil {
-		// Source unavailable — fall back to removing symlinks that point into source
-		return ejectDirBySymlinks(item, src, dst)
+	// New-style: iterate manifest entries for this directory
+	entries := manifest.EntriesUnder(item.TargetPath)
+	if len(entries) == 0 {
+		return []Result{{Item: item, Action: "skipped", Detail: "no managed entries found"}}
 	}
 
 	var results []Result
-	for _, entry := range entries {
-		entryName := entry.Name()
-		entryDst := filepath.Join(dst, entryName)
-		entrySrc := filepath.Join(src, entryName)
+	for _, me := range entries {
+		entryDst := filepath.Join(targetDir, me.TargetPath)
 
 		subItem := config.Item{
 			Type:       item.Type,
-			SourcePath: filepath.Join(item.SourcePath, entryName),
-			TargetPath: filepath.Join(item.TargetPath, entryName),
+			SourcePath: strings.TrimPrefix(me.TargetPath, item.TargetPath+"/"),
+			TargetPath: me.TargetPath,
 			Enabled:    true,
 		}
+		subItem.SourcePath = filepath.Join(item.SourcePath, subItem.SourcePath)
 
 		entryInfo, err := os.Lstat(entryDst)
 		if err != nil {
@@ -497,9 +578,9 @@ func ejectDir(item config.Item, sourceDir, targetDir string) []Result {
 		}
 
 		if entryInfo.Mode()&os.ModeSymlink != 0 {
-			// Only remove if it points to our source
+			// Only remove if it points to our recorded source
 			target, _ := os.Readlink(entryDst)
-			if target == entrySrc {
+			if target == me.SourcePath {
 				if err := os.Remove(entryDst); err != nil {
 					results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
 				} else {
@@ -523,49 +604,8 @@ func ejectDir(item config.Item, sourceDir, targetDir string) []Result {
 		}
 	}
 
-	return results
-}
-
-// ejectDirBySymlinks removes symlinks inside dst that point into src.
-// Used as fallback when the source directory is unavailable.
-func ejectDirBySymlinks(item config.Item, src, dst string) []Result {
-	entries, err := os.ReadDir(dst)
-	if err != nil {
-		return []Result{{Item: item, Action: "error", Detail: fmt.Sprintf("cannot read directory: %v", err)}}
-	}
-
-	var results []Result
-	for _, entry := range entries {
-		entryName := entry.Name()
-		entryDst := filepath.Join(dst, entryName)
-
-		subItem := config.Item{
-			Type:       item.Type,
-			SourcePath: filepath.Join(item.SourcePath, entryName),
-			TargetPath: filepath.Join(item.TargetPath, entryName),
-			Enabled:    true,
-		}
-
-		info, err := os.Lstat(entryDst)
-		if err != nil {
-			continue
-		}
-
-		if info.Mode()&os.ModeSymlink != 0 {
-			target, _ := os.Readlink(entryDst)
-			// Check if symlink points into our source directory
-			if strings.HasPrefix(target, src+string(filepath.Separator)) || target == src {
-				if err := os.Remove(entryDst); err != nil {
-					results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
-				} else {
-					results = append(results, Result{Item: subItem, Action: "removed", Detail: "symlink removed"})
-				}
-			}
-		}
-	}
-
 	if len(results) == 0 {
-		return []Result{{Item: item, Action: "skipped", Detail: "no injected entries found"}}
+		return []Result{{Item: item, Action: "skipped", Detail: "no managed entries found"}}
 	}
 	return results
 }
@@ -737,5 +777,26 @@ func removeIfEmptyDir(dir string) {
 	}
 	if len(entries) == 0 {
 		os.Remove(dir)
+	}
+}
+
+func shouldRecordManagedPath(result Result, mode config.InjectionMode) bool {
+	if result.Action == "created" {
+		return true
+	}
+
+	return mode == config.ModeSymlink &&
+		result.Action == "skipped" &&
+		result.Detail == "already up to date"
+}
+
+func reconcileManifest(results []Result, manifest *Manifest) {
+	for _, result := range results {
+		switch {
+		case result.Action == "removed":
+			manifest.Remove(result.Item.TargetPath)
+		case result.Action == "skipped" && result.Detail == "not present":
+			manifest.Remove(result.Item.TargetPath)
+		}
 	}
 }
