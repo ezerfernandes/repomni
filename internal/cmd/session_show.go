@@ -39,12 +39,12 @@ func runSessionShow(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	meta, err := session.FindSession(projectPath, args[0])
+	meta, err := session.FindSessionAll(projectPath, args[0], sessionCLIFilter)
 	if err != nil {
 		return err
 	}
 
-	messages, err := session.ReadMessages(meta.FilePath, sessionShowOffset, sessionShowLimit, sessionShowFull)
+	messages, err := session.ReadMessagesForSession(meta, sessionShowOffset, sessionShowLimit, sessionShowFull)
 	if err != nil {
 		return err
 	}

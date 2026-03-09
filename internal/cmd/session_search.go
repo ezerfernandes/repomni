@@ -44,7 +44,7 @@ func runSessionSearch(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	results, err := session.Search(projectPath, args[0], sessionSearchMode, sessionSearchLimit)
+	results, err := session.SearchAll(projectPath, args[0], sessionSearchMode, sessionCLIFilter, sessionSearchLimit)
 	if err != nil {
 		return err
 	}
