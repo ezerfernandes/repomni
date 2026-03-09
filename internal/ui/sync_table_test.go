@@ -122,7 +122,7 @@ func TestPrintSyncJSON(t *testing.T) {
 	summary := syncer.SyncSummary{Total: 1, Pulled: 1}
 
 	output := captureStdout(t, func() {
-		PrintSyncJSON(results, summary)
+		_ = PrintSyncJSON(results, summary)
 	})
 
 	// Verify valid JSON
@@ -149,7 +149,7 @@ func TestPrintGitStatusJSON(t *testing.T) {
 	}
 
 	output := captureStdout(t, func() {
-		PrintGitStatusJSON(statuses)
+		_ = PrintGitStatusJSON(statuses)
 	})
 
 	// Verify valid JSON array
@@ -353,7 +353,7 @@ func TestPrintSyncJSON_Empty(t *testing.T) {
 	summary := syncer.SyncSummary{Total: 0}
 
 	output := captureStdout(t, func() {
-		PrintSyncJSON(nil, summary)
+		_ = PrintSyncJSON(nil, summary)
 	})
 
 	var parsed map[string]json.RawMessage
@@ -384,7 +384,7 @@ func TestPrintSyncJSON_FieldValues(t *testing.T) {
 	summary := syncer.SyncSummary{Total: 1, Pulled: 1}
 
 	output := captureStdout(t, func() {
-		PrintSyncJSON(results, summary)
+		_ = PrintSyncJSON(results, summary)
 	})
 
 	var parsed struct {
@@ -435,7 +435,7 @@ func TestPrintGitStatusJSON_FieldValues(t *testing.T) {
 	}
 
 	output := captureStdout(t, func() {
-		PrintGitStatusJSON(statuses)
+		_ = PrintGitStatusJSON(statuses)
 	})
 
 	var parsed []struct {
@@ -468,7 +468,7 @@ func TestPrintGitStatusJSON_FieldValues(t *testing.T) {
 
 func TestPrintGitStatusJSON_Empty(t *testing.T) {
 	output := captureStdout(t, func() {
-		PrintGitStatusJSON(nil)
+		_ = PrintGitStatusJSON(nil)
 	})
 
 	if !strings.Contains(output, "null") {
@@ -542,7 +542,7 @@ func TestPrintGitStatusJSON_Multiple(t *testing.T) {
 	}
 
 	output := captureStdout(t, func() {
-		PrintGitStatusJSON(statuses)
+		_ = PrintGitStatusJSON(statuses)
 	})
 
 	var parsed []map[string]any

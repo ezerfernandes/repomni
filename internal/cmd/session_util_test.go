@@ -25,7 +25,7 @@ func TestResolveProjectPath_GitRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	if err := os.Chdir(subDir); err != nil {
 		t.Fatal(err)
@@ -54,7 +54,7 @@ func TestResolveProjectPath_AtRepoRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	if err := os.Chdir(repoDir); err != nil {
 		t.Fatal(err)
@@ -77,7 +77,7 @@ func TestResolveProjectPath_NotGitRepo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.Chdir(origDir)
+	defer func() { _ = os.Chdir(origDir) }()
 
 	if err := os.Chdir(dir); err != nil {
 		t.Fatal(err)

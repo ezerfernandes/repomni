@@ -100,7 +100,7 @@ func TestFindGitRepos(t *testing.T) {
 	// Create 2 git repos and 1 regular dir
 	initGitRepo(t, filepath.Join(parent, "repo-a"))
 	initGitRepo(t, filepath.Join(parent, "repo-b"))
-	os.MkdirAll(filepath.Join(parent, "not-a-repo"), 0755)
+	_ = os.MkdirAll(filepath.Join(parent, "not-a-repo"), 0755)
 
 	repos, err := FindGitRepos(parent)
 	if err != nil {

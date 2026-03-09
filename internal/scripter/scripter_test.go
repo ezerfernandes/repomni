@@ -89,7 +89,7 @@ func TestDeleteScript(t *testing.T) {
 	gitDir := setupGitDir(t)
 
 	// Save then delete
-	SaveScript(gitDir, ScriptSetup, "#!/bin/bash")
+	_ = SaveScript(gitDir, ScriptSetup, "#!/bin/bash")
 
 	if err := DeleteScript(gitDir, ScriptSetup); err != nil {
 		t.Fatalf("DeleteScript failed: %v", err)
@@ -172,8 +172,8 @@ func TestRunScript_UsesWorkDir(t *testing.T) {
 func TestSaveScript_OverwritesExisting(t *testing.T) {
 	gitDir := setupGitDir(t)
 
-	SaveScript(gitDir, ScriptSetup, "#!/bin/bash\necho v1")
-	SaveScript(gitDir, ScriptSetup, "#!/bin/bash\necho v2")
+	_ = SaveScript(gitDir, ScriptSetup, "#!/bin/bash\necho v1")
+	_ = SaveScript(gitDir, ScriptSetup, "#!/bin/bash\necho v2")
 
 	got, exists := GetScript(gitDir, ScriptSetup)
 	if !exists {
@@ -251,8 +251,8 @@ func TestScriptPath_DifferentTypes(t *testing.T) {
 func TestGetScript_AfterDelete(t *testing.T) {
 	gitDir := setupGitDir(t)
 
-	SaveScript(gitDir, ScriptSetup, "#!/bin/bash\necho hello")
-	DeleteScript(gitDir, ScriptSetup)
+	_ = SaveScript(gitDir, ScriptSetup, "#!/bin/bash\necho hello")
+	_ = DeleteScript(gitDir, ScriptSetup)
 
 	content, exists := GetScript(gitDir, ScriptSetup)
 	if exists {

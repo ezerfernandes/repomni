@@ -167,11 +167,6 @@ func formatDuration(secs float64) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
-func formatTokens(t session.TokenUsage) string {
-	total := t.InputTokens + t.OutputTokens
-	return formatCount(total)
-}
-
 func formatCount(n int64) string {
 	if n >= 1_000_000 {
 		return fmt.Sprintf("%.1fM", float64(n)/1_000_000)

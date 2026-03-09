@@ -10,7 +10,7 @@ import (
 func setupGitDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "info"), 0755)
+	_ = os.MkdirAll(filepath.Join(dir, "info"), 0755)
 	return dir
 }
 
@@ -46,8 +46,8 @@ func TestUpdateExcludeIdempotent(t *testing.T) {
 	gitDir := setupGitDir(t)
 	paths := []string{".envrc"}
 
-	UpdateExclude(gitDir, paths)
-	UpdateExclude(gitDir, paths)
+	_ = UpdateExclude(gitDir, paths)
+	_ = UpdateExclude(gitDir, paths)
 
 	content, _ := os.ReadFile(filepath.Join(gitDir, "info", "exclude"))
 	count := strings.Count(string(content), excludeMarkerStart)
@@ -60,9 +60,9 @@ func TestUpdateExcludePreservesExisting(t *testing.T) {
 	gitDir := setupGitDir(t)
 
 	existing := "# existing patterns\n*.log\n"
-	os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte(existing), 0644)
+	_ = os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte(existing), 0644)
 
-	UpdateExclude(gitDir, []string{".env"})
+	_ = UpdateExclude(gitDir, []string{".env"})
 
 	content, _ := os.ReadFile(filepath.Join(gitDir, "info", "exclude"))
 	s := string(content)
@@ -78,10 +78,10 @@ func TestCleanExclude(t *testing.T) {
 	gitDir := setupGitDir(t)
 
 	existing := "# existing\n*.log\n"
-	os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte(existing), 0644)
+	_ = os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte(existing), 0644)
 
-	UpdateExclude(gitDir, []string{".env"})
-	CleanExclude(gitDir)
+	_ = UpdateExclude(gitDir, []string{".env"})
+	_ = CleanExclude(gitDir)
 
 	content, _ := os.ReadFile(filepath.Join(gitDir, "info", "exclude"))
 	s := string(content)
@@ -95,7 +95,7 @@ func TestCleanExclude(t *testing.T) {
 
 func TestGetExcludedPaths(t *testing.T) {
 	gitDir := setupGitDir(t)
-	UpdateExclude(gitDir, []string{".envrc", ".env"})
+	_ = UpdateExclude(gitDir, []string{".envrc", ".env"})
 
 	paths := GetExcludedPaths(gitDir)
 	if len(paths) != 2 {
@@ -110,7 +110,7 @@ func TestHasManagedBlock(t *testing.T) {
 		t.Error("should not have managed block initially")
 	}
 
-	UpdateExclude(gitDir, []string{".env"})
+	_ = UpdateExclude(gitDir, []string{".env"})
 
 	if !HasManagedBlock(gitDir) {
 		t.Error("should have managed block after update")
@@ -127,7 +127,7 @@ func TestHasManagedBlock_NoFile(t *testing.T) {
 
 func TestHasManagedBlock_FileWithoutBlock(t *testing.T) {
 	gitDir := setupGitDir(t)
-	os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte("# just comments\n*.log\n"), 0644)
+	_ = os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte("# just comments\n*.log\n"), 0644)
 
 	if HasManagedBlock(gitDir) {
 		t.Error("should return false when file exists but has no managed block")
@@ -136,13 +136,13 @@ func TestHasManagedBlock_FileWithoutBlock(t *testing.T) {
 
 func TestHasManagedBlock_AfterClean(t *testing.T) {
 	gitDir := setupGitDir(t)
-	UpdateExclude(gitDir, []string{".env"})
+	_ = UpdateExclude(gitDir, []string{".env"})
 
 	if !HasManagedBlock(gitDir) {
 		t.Fatal("expected managed block after update")
 	}
 
-	CleanExclude(gitDir)
+	_ = CleanExclude(gitDir)
 
 	if HasManagedBlock(gitDir) {
 		t.Error("should not have managed block after clean")
@@ -222,10 +222,10 @@ func TestUpdateExclude_UpdatesExistingBlock(t *testing.T) {
 	gitDir := setupGitDir(t)
 
 	// First update with one set of paths
-	UpdateExclude(gitDir, []string{".env"})
+	_ = UpdateExclude(gitDir, []string{".env"})
 
 	// Second update with different paths
-	UpdateExclude(gitDir, []string{".envrc", ".claude/skills"})
+	_ = UpdateExclude(gitDir, []string{".envrc", ".claude/skills"})
 
 	content, _ := os.ReadFile(filepath.Join(gitDir, "info", "exclude"))
 	s := string(content)
@@ -247,7 +247,7 @@ func TestUpdateExclude_UpdatesExistingBlock(t *testing.T) {
 
 func TestGetExcludedPaths_MultiplePaths(t *testing.T) {
 	gitDir := setupGitDir(t)
-	UpdateExclude(gitDir, []string{".env", ".envrc", ".claude/skills"})
+	_ = UpdateExclude(gitDir, []string{".env", ".envrc", ".claude/skills"})
 
 	paths := GetExcludedPaths(gitDir)
 	if len(paths) != 3 {
@@ -258,7 +258,7 @@ func TestGetExcludedPaths_MultiplePaths(t *testing.T) {
 func TestGetExcludedPaths_EmptyBlock(t *testing.T) {
 	gitDir := setupGitDir(t)
 	content := excludeMarkerStart + "\n" + excludeMarkerEnd + "\n"
-	os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte(content), 0644)
+	_ = os.WriteFile(filepath.Join(gitDir, "info", "exclude"), []byte(content), 0644)
 
 	paths := GetExcludedPaths(gitDir)
 	if len(paths) != 0 {

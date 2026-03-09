@@ -9,11 +9,11 @@ import (
 
 // BranchInfo holds the collected information about one branch repo.
 type BranchInfo struct {
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	Branch   string `json:"branch"`
-	State    string `json:"state"`
-	MergeURL string `json:"merge_url,omitempty"`
+	Path        string `json:"path"`
+	Name        string `json:"name"`
+	Branch      string `json:"branch"`
+	State       string `json:"state"`
+	MergeURL    string `json:"merge_url,omitempty"`
 	Ticket      string `json:"ticket,omitempty"`
 	Description string `json:"description,omitempty"`
 	Dirty       bool   `json:"dirty"`
