@@ -157,6 +157,13 @@ repomni eject --all /path/to/my-clones
 | `branch clone <name>` | Clone parent repo and check out an existing remote branch |
 | `branch list [dir]` | List branch repos with their workflow states |
 | `branch set-state <state> [url]` | Set workflow state for the current branch repo |
+| `branch submit` | Create a PR/MR for the current branch |
+| `branch attach [url]` | Attach an existing PR/MR to the current branch repo |
+| `branch checks` | Show CI check status for the attached PR/MR |
+| `branch open` | Open the attached PR/MR in a browser |
+| `branch ready` | Mark a draft PR/MR as ready for review |
+| `branch review` | Submit a review on the attached PR/MR |
+| `branch merge` | Merge the attached PR/MR |
 | `branch clean [dir]` | Remove branch repos in terminal states (merged, closed) |
 | **sync** | |
 | `sync [dir]` | Pull code updates and refresh PR/MR status |
@@ -167,11 +174,11 @@ repomni eject --all /path/to/my-clones
 | `config repo` | Configure injection settings for the current repository |
 | `config script` | Manage per-repo setup scripts |
 | **session** | |
-| `session list` | List Claude Code sessions for the current project |
-| `session show <session-id>` | Show messages from a Claude Code session |
-| `session search <query>` | Search Claude Code sessions by content |
+| `session list` | List Claude Code and Codex sessions for the current project |
+| `session show <session-id>` | Show messages from a session |
+| `session search <query>` | Search sessions by content |
 | `session export <session-id>` | Export a session as markdown |
-| `session resume <session-id>` | Resume a Claude Code session |
+| `session resume <session-id>` | Resume a Claude Code or Codex session |
 | `session stats` | Show aggregate session statistics |
 | `session clean` | Remove old or empty session files |
 
@@ -322,6 +329,100 @@ Example output:
   old-feature    old-feature     closed
 ```
 
+### `branch submit`
+
+Push the current branch and create a pull request (GitHub) or merge request (GitLab). The platform is detected from the origin remote URL. After creation the PR/MR URL is stored in `.git/repomni/config.yaml` and the workflow state is set to `review`.
+
+Requires `gh` (GitHub) or `glab` (GitLab) to be installed and authenticated.
+
+```sh
+repomni branch submit --fill
+repomni branch submit --fill --draft --reviewer alice,bob
+repomni branch submit --title "Add feature" --body "Description" --base develop
+```
+
+| Flag | Description |
+|---|---|
+| `--fill` | Auto-fill title and body from commits |
+| `--draft` | Create as draft |
+| `--reviewer` | Reviewers (comma-separated or repeated) |
+| `--base` | Base/target branch |
+| `--title` | PR/MR title |
+| `--body` | PR/MR body |
+
+### `branch attach`
+
+Associate an existing pull/merge request with the current branch repo. The PR/MR state is queried and stored along with the URL.
+
+```sh
+repomni branch attach https://github.com/org/repo/pull/42
+repomni branch attach --current
+```
+
+| Flag | Description |
+|---|---|
+| `--current` | Discover the PR/MR for the current branch automatically |
+
+### `branch checks`
+
+Display the status of CI checks for the attached PR/MR.
+
+```sh
+repomni branch checks
+repomni branch checks --watch
+```
+
+| Flag | Description |
+|---|---|
+| `--watch` | Poll until checks complete (interactive) |
+
+### `branch open`
+
+Open the attached PR/MR in a browser.
+
+```sh
+repomni branch open
+```
+
+### `branch ready`
+
+Mark a draft PR/MR as ready for review.
+
+```sh
+repomni branch ready
+```
+
+### `branch review`
+
+Submit a review on the attached PR/MR.
+
+```sh
+repomni branch review --approve
+repomni branch review --comment "looks good"
+repomni branch review --approve --comment "LGTM"
+```
+
+| Flag | Description |
+|---|---|
+| `--approve` | Approve the PR/MR |
+| `--comment` | Leave a review comment |
+
+### `branch merge`
+
+Merge the attached PR/MR.
+
+```sh
+repomni branch merge
+repomni branch merge --squash
+repomni branch merge --rebase --delete-branch
+```
+
+| Flag | Description |
+|---|---|
+| `--squash` | Squash commits before merging |
+| `--rebase` | Rebase before merging |
+| `--delete-branch` | Delete the branch after merging |
+
 ### `sync`
 
 Run `sync code` and `sync state` together. First pulls git updates for all repos, then queries GitHub/GitLab for PR/MR status changes and updates workflow states.
@@ -423,32 +524,35 @@ repomni config script
 
 ### `session list`
 
-List Claude Code sessions for the current project.
+List Claude Code and Codex CLI sessions for the current project. By default both CLIs are included; use `--cli` to filter.
 
 ```sh
 repomni session list
 repomni session list --limit 10
-repomni session list --json
+repomni session list --cli claude
+repomni session list --cli codex --json
 ```
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--json` | Output as JSON |
 | `--limit` | Maximum number of sessions to show (default: 0, unlimited) |
 
 ### `session show`
 
-Display the conversation history of a specific session. Supports prefix matching on the session ID (e.g., first 6+ characters).
+Display the conversation history of a specific session. Supports prefix matching on the session ID (e.g., first 6+ characters). Works with both Claude Code and Codex sessions.
 
 ```sh
 repomni session show abc123
 repomni session show abc123 --limit 20 --offset 5
 repomni session show abc123 --full
-repomni session show abc123 --json
+repomni session show abc123 --cli codex --json
 ```
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--json` | Output as JSON |
 | `--limit` | Maximum number of messages to show (default: 0, unlimited) |
 | `--offset` | Skip the first N messages |
@@ -456,24 +560,25 @@ repomni session show abc123 --json
 
 ### `session search`
 
-Search Claude Code sessions by content.
+Search Claude Code and Codex sessions by content.
 
 ```sh
 repomni session search "error handling"
 repomni session search "fix bug" --mode user
 repomni session search "refactor" --limit 5
-repomni session search "deploy" --json
+repomni session search "deploy" --cli claude --json
 ```
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--json` | Output as JSON |
 | `--mode` | Search mode: `title` (first message), `user`, `assistant`, or `all` (default: `all`) |
 | `--limit` | Maximum number of matching sessions (default: 10) |
 
 ### `session export`
 
-Export a Claude Code session conversation as a markdown document. Output goes to stdout by default, or to a file with `--output`.
+Export a session conversation as a markdown document. Output goes to stdout by default, or to a file with `--output`. Works with both Claude Code and Codex sessions.
 
 ```sh
 repomni session export abc123
@@ -484,52 +589,57 @@ repomni session export abc123 --no-tools
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--output` | Output file path (default: stdout) |
 | `--full` | Include full `tool_use`/`tool_result` blocks |
 | `--no-tools` | Omit messages that only contain tool calls |
 
 ### `session resume`
 
-Launch Claude Code with `--resume` to continue a previous session. Supports prefix matching on the session ID.
+Resume a previous Claude Code or Codex session. Launches the appropriate CLI with `--resume`. Supports prefix matching on the session ID.
 
-Requires the `claude` CLI to be installed and in your `PATH`.
+Requires `claude` or `codex` to be installed and in your `PATH`.
 
 ```sh
 repomni session resume abc123
 repomni session resume abc123 --continue
+repomni session resume abc123 --cli codex
 ```
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--continue` | Also pass `--continue` to Claude Code |
 
 ### `session stats`
 
-Show aggregate session statistics (total sessions, messages, tokens, duration, size).
+Show aggregate session statistics (total sessions, messages, tokens, duration, size) across Claude Code and Codex.
 
 ```sh
 repomni session stats
-repomni session stats --json
+repomni session stats --cli claude --json
 ```
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--json` | Output as JSON |
 
 ### `session clean`
 
-Find and remove session files that are empty (0 bytes) or older than a specified duration. By default, only targets empty sessions.
+Find and remove session files that are empty (0 bytes) or older than a specified duration. By default, only targets empty sessions. Works across both Claude Code and Codex session stores.
 
 ```sh
 repomni session clean
 repomni session clean --empty
 repomni session clean --older-than 30d
 repomni session clean --dry-run
-repomni session clean --force --json
+repomni session clean --cli codex --force --json
 ```
 
 | Flag | Description |
 |---|---|
+| `--cli` | Filter by CLI tool: `claude`, `codex`, or empty for both |
 | `--json` | Output as JSON |
 | `--dry-run` | Show what would be deleted without making changes |
 | `--older-than` | Delete sessions older than duration (e.g., `30d`, `7d`) |

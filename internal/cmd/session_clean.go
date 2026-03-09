@@ -57,20 +57,6 @@ func runSessionClean(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	dir, err := session.ProjectSessionDir(projectPath)
-	if err != nil {
-		return err
-	}
-
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Println("No session directory found.")
-			return nil
-		}
-		return fmt.Errorf("cannot read session directory: %w", err)
-	}
-
 	var olderThanDuration time.Duration
 	if sessionCleanOlderThan != "" {
 		d, err := parseDayDuration(sessionCleanOlderThan)
@@ -80,44 +66,19 @@ func runSessionClean(cmd *cobra.Command, args []string) error {
 		olderThanDuration = d
 	}
 
-	var candidates []cleanCandidate
 	cutoff := time.Now().Add(-olderThanDuration)
+	var candidates []cleanCandidate
 
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
-			continue
-		}
+	// Collect Claude Code candidates.
+	if sessionCLIFilter == "" || sessionCLIFilter == "claude" {
+		c := collectClaudeCleanCandidates(projectPath, olderThanDuration, cutoff)
+		candidates = append(candidates, c...)
+	}
 
-		filePath := filepath.Join(dir, entry.Name())
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-
-		sessionID := strings.TrimSuffix(entry.Name(), ".jsonl")
-
-		if info.Size() == 0 {
-			candidates = append(candidates, cleanCandidate{
-				SessionID: sessionID,
-				FilePath:  filePath,
-				SizeBytes: 0,
-				Reason:    "empty (0 bytes)",
-			})
-			continue
-		}
-
-		if sessionCleanEmpty {
-			continue // only targeting empty files
-		}
-
-		if olderThanDuration > 0 && info.ModTime().Before(cutoff) {
-			candidates = append(candidates, cleanCandidate{
-				SessionID: sessionID,
-				FilePath:  filePath,
-				SizeBytes: info.Size(),
-				Reason:    fmt.Sprintf("older than %s", sessionCleanOlderThan),
-			})
-		}
+	// Collect Codex candidates.
+	if sessionCLIFilter == "" || sessionCLIFilter == "codex" {
+		c := collectCodexCleanCandidates(projectPath, olderThanDuration, cutoff)
+		candidates = append(candidates, c...)
 	}
 
 	if len(candidates) == 0 {
@@ -197,6 +158,121 @@ func parseDayDuration(s string) (time.Duration, error) {
 		return time.Duration(days) * 24 * time.Hour, nil
 	}
 	return time.ParseDuration(s)
+}
+
+func collectClaudeCleanCandidates(projectPath string, olderThanDuration time.Duration, cutoff time.Time) []cleanCandidate {
+	dir, err := session.ProjectSessionDir(projectPath)
+	if err != nil {
+		return nil
+	}
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+
+	var candidates []cleanCandidate
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".jsonl") {
+			continue
+		}
+
+		filePath := filepath.Join(dir, entry.Name())
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+
+		sessionID := strings.TrimSuffix(entry.Name(), ".jsonl")
+
+		if info.Size() == 0 {
+			candidates = append(candidates, cleanCandidate{
+				SessionID: sessionID,
+				FilePath:  filePath,
+				SizeBytes: 0,
+				Reason:    "empty (0 bytes)",
+			})
+			continue
+		}
+
+		if sessionCleanEmpty {
+			continue
+		}
+
+		if olderThanDuration > 0 && info.ModTime().Before(cutoff) {
+			candidates = append(candidates, cleanCandidate{
+				SessionID: sessionID,
+				FilePath:  filePath,
+				SizeBytes: info.Size(),
+				Reason:    fmt.Sprintf("older than %s", sessionCleanOlderThan),
+			})
+		}
+	}
+	return candidates
+}
+
+func collectCodexCleanCandidates(projectPath string, olderThanDuration time.Duration, cutoff time.Time) []cleanCandidate {
+	dir, err := session.CodexSessionsDir()
+	if err != nil {
+		return nil
+	}
+
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return nil
+	}
+
+	var candidates []cleanCandidate
+
+	_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".jsonl") {
+			return nil
+		}
+
+		sessionID := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+
+		// For Codex, filter by project path first (when possible).
+		if projectPath != "" && info.Size() > 0 {
+			meta, err := session.ExtractCodexMeta(path)
+			if err != nil {
+				return nil
+			}
+			if !session.PathContains(projectPath, meta.ProjectPath) {
+				return nil
+			}
+		}
+
+		if info.Size() == 0 {
+			// Can't verify project ownership for empty files, so only
+			// include them when we can't filter by project (no projectPath)
+			// or when projectPath is empty.
+			if projectPath != "" {
+				return nil
+			}
+			candidates = append(candidates, cleanCandidate{
+				SessionID: sessionID,
+				FilePath:  path,
+				SizeBytes: 0,
+				Reason:    "empty (0 bytes)",
+			})
+			return nil
+		}
+
+		if sessionCleanEmpty {
+			return nil
+		}
+
+		if olderThanDuration > 0 && info.ModTime().Before(cutoff) {
+			candidates = append(candidates, cleanCandidate{
+				SessionID: sessionID,
+				FilePath:  path,
+				SizeBytes: info.Size(),
+				Reason:    fmt.Sprintf("older than %s", sessionCleanOlderThan),
+			})
+		}
+		return nil
+	})
+
+	return candidates
 }
 
 func formatCleanSize(bytes int64) string {

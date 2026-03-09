@@ -41,13 +41,13 @@ func runSessionExport(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	meta, err := session.FindSession(projectPath, args[0])
+	meta, err := session.FindSessionAll(projectPath, args[0], sessionCLIFilter)
 	if err != nil {
 		return err
 	}
 
 	full := sessionExportFull && !sessionExportNoTools
-	messages, err := session.ReadMessages(meta.FilePath, 0, 0, full)
+	messages, err := session.ReadMessagesForSession(meta, 0, 0, full)
 	if err != nil {
 		return err
 	}

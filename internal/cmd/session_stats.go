@@ -29,7 +29,7 @@ func runSessionStats(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sessions, err := session.Discover(projectPath)
+	sessions, err := session.DiscoverAll(projectPath, sessionCLIFilter, 0)
 	if err != nil {
 		return err
 	}

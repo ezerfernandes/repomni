@@ -27,6 +27,7 @@ func PrintSessionsList(sessions []session.SessionMeta) {
 	fmt.Println()
 	for i, s := range sessions {
 		fmt.Printf("  %s  %s\n", labelStyle.Render("ID:      "), idStyle.Render(s.SessionID))
+		fmt.Printf("  %s  %s\n", labelStyle.Render("CLI:     "), s.CLI)
 		fmt.Printf("  %s  %s\n", labelStyle.Render("Message: "), s.FirstMessage)
 		fmt.Printf("  %s  %d\n", labelStyle.Render("Messages:"), s.MessageCount)
 		fmt.Printf("  %s  %s\n", labelStyle.Render("Duration:"), formatDuration(s.DurationSecs))
@@ -48,6 +49,7 @@ func PrintSessionsList(sessions []session.SessionMeta) {
 func PrintSessionMessages(meta session.SessionMeta, messages []session.Message, full bool) {
 	fmt.Println()
 	fmt.Printf("  %s  %s\n", labelStyle.Render("Session: "), idStyle.Render(meta.SessionID))
+	fmt.Printf("  %s  %s\n", labelStyle.Render("CLI:     "), meta.CLI)
 	fmt.Printf("  %s  %s\n", labelStyle.Render("Project: "), meta.ProjectPath)
 	fmt.Printf("  %s  %s\n", labelStyle.Render("Created: "), meta.CreatedAt.Format(time.RFC3339))
 	fmt.Printf("  %s  %d\n", labelStyle.Render("Messages:"), meta.MessageCount)

@@ -19,7 +19,10 @@ type RepoConfig struct {
 	Ticket      string           `yaml:"ticket,omitempty"`
 	Description string           `yaml:"description,omitempty"`
 	Remote      bool             `yaml:"remote,omitempty"`
-	Items    []RepoItemConfig `yaml:"items"`
+	MergeNumber int              `yaml:"merge_number,omitempty"`
+	BaseBranch  string           `yaml:"base_branch,omitempty"`
+	Draft       bool             `yaml:"draft,omitempty"`
+	Items       []RepoItemConfig `yaml:"items"`
 }
 
 // RepoItemConfig records whether a global config item is enabled for this repo,

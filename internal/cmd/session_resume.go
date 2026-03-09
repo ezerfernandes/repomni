@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/ezerfernandes/repomni/internal/session"
 	"github.com/spf13/cobra"
@@ -32,11 +33,18 @@ func runSessionResume(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	meta, err := session.FindSession(projectPath, args[0])
+	meta, err := session.FindSessionAll(projectPath, args[0], sessionCLIFilter)
 	if err != nil {
 		return err
 	}
 
+	if meta.CLI == "codex" {
+		return resumeCodex(meta)
+	}
+	return resumeClaude(meta)
+}
+
+func resumeClaude(meta *session.SessionMeta) error {
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
 		return fmt.Errorf("claude not found in PATH; install Claude Code CLI first")
@@ -47,21 +55,35 @@ func runSessionResume(cmd *cobra.Command, args []string) error {
 		claudeArgs = append(claudeArgs, "--continue")
 	}
 
+	return startProcess(claudePath, claudeArgs)
+}
+
+func resumeCodex(meta *session.SessionMeta) error {
+	codexPath, err := exec.LookPath("codex")
+	if err != nil {
+		return fmt.Errorf("codex not found in PATH; install Codex CLI first")
+	}
+
+	codexArgs := []string{codexPath, "resume", meta.SessionID}
+	return startProcess(codexPath, codexArgs)
+}
+
+func startProcess(binPath string, args []string) error {
 	proc := &os.ProcAttr{
 		Files: []*os.File{os.Stdin, os.Stdout, os.Stderr},
 	}
 
-	p, err := os.StartProcess(claudePath, claudeArgs, proc)
+	p, err := os.StartProcess(binPath, args, proc)
 	if err != nil {
-		return fmt.Errorf("cannot start claude: %w", err)
+		return fmt.Errorf("cannot start %s: %w", filepath.Base(binPath), err)
 	}
 
 	state, err := p.Wait()
 	if err != nil {
-		return fmt.Errorf("claude exited with error: %w", err)
+		return fmt.Errorf("%s exited with error: %w", filepath.Base(binPath), err)
 	}
 	if !state.Success() {
-		return fmt.Errorf("claude exited with code %d", state.ExitCode())
+		return fmt.Errorf("%s exited with code %d", filepath.Base(binPath), state.ExitCode())
 	}
 	return nil
 }

@@ -42,6 +42,7 @@ func ExtractMeta(filePath string) (*SessionMeta, error) {
 	sessionID := strings.TrimSuffix(filepath.Base(filePath), ".jsonl")
 
 	meta := &SessionMeta{
+		CLI:        "claude",
 		SessionID:  sessionID,
 		FilePath:   filePath,
 		SizeBytes:  info.Size(),

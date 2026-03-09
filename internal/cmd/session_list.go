@@ -34,7 +34,7 @@ func runSessionList(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	sessions, err := session.DiscoverWithLimit(projectPath, sessionListLimit)
+	sessions, err := session.DiscoverAll(projectPath, sessionCLIFilter, sessionListLimit)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,7 @@
-// Package session discovers, parses, and analyzes Claude Code session files.
-// It reads JSONL session data from ~/.claude/projects/ and provides structured
-// access to session metadata, messages, and token usage.
+// Package session discovers, parses, and analyzes CLI session files.
+// It reads JSONL session data from Claude Code (~/.claude/projects/) and
+// Codex (~/.codex/sessions/) and provides structured access to session
+// metadata, messages, and token usage.
 package session
 
 import (
@@ -20,8 +21,9 @@ type TokenUsage struct {
 	CacheCreationTokens int64 `json:"cache_creation_tokens"`
 }
 
-// SessionMeta holds summary metadata about a single Claude Code session.
+// SessionMeta holds summary metadata about a single session.
 type SessionMeta struct {
+	CLI          string     `json:"cli"` // "claude" or "codex"
 	SessionID    string     `json:"session_id"`
 	ProjectPath  string     `json:"project_path"`
 	FilePath     string     `json:"file_path"`
@@ -426,4 +428,102 @@ func splitLines(data []byte) [][]byte {
 		lines = append(lines, data[start:])
 	}
 	return lines
+}
+
+// DiscoverAll finds sessions from both Claude Code and Codex for the given
+// project. cliFilter can be "claude", "codex", or "" (both).
+func DiscoverAll(projectPath, cliFilter string, limit int) ([]SessionMeta, error) {
+	var all []SessionMeta
+
+	if cliFilter == "" || cliFilter == "claude" {
+		sessions, err := DiscoverWithLimit(projectPath, 0)
+		if err != nil && cliFilter == "claude" {
+			return nil, err
+		}
+		all = append(all, sessions...)
+	}
+
+	if cliFilter == "" || cliFilter == "codex" {
+		sessions, err := DiscoverCodex(projectPath, 0)
+		if err != nil && cliFilter == "codex" {
+			return nil, err
+		}
+		all = append(all, sessions...)
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].ModifiedAt.After(all[j].ModifiedAt)
+	})
+
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+
+	return all, nil
+}
+
+// FindSessionAll searches both Claude Code and Codex sessions for a match.
+func FindSessionAll(projectPath, sessionID, cliFilter string) (*SessionMeta, error) {
+	var results []*SessionMeta
+
+	if cliFilter == "" || cliFilter == "claude" {
+		meta, err := FindSession(projectPath, sessionID)
+		if err == nil {
+			results = append(results, meta)
+		}
+	}
+
+	if cliFilter == "" || cliFilter == "codex" {
+		meta, err := FindCodexSession(projectPath, sessionID)
+		if err == nil {
+			results = append(results, meta)
+		}
+	}
+
+	switch len(results) {
+	case 0:
+		return nil, fmt.Errorf("session %q not found; use 'session list' to see available sessions", sessionID)
+	case 1:
+		return results[0], nil
+	default:
+		return nil, fmt.Errorf("session ID %q is ambiguous; found in both claude and codex", sessionID)
+	}
+}
+
+// ReadMessagesForSession reads messages using the correct parser based on CLI type.
+func ReadMessagesForSession(meta *SessionMeta, offset, limit int, full bool) ([]Message, error) {
+	if meta.CLI == "codex" {
+		return ReadCodexMessages(meta.FilePath, offset, limit, full)
+	}
+	return ReadMessages(meta.FilePath, offset, limit, full)
+}
+
+// SearchAll searches sessions from both CLIs.
+func SearchAll(projectPath, query, mode, cliFilter string, limit int) ([]SearchResult, error) {
+	var all []SearchResult
+
+	if cliFilter == "" || cliFilter == "claude" {
+		results, err := Search(projectPath, query, mode, 0)
+		if err == nil {
+			all = append(all, results...)
+		}
+	}
+
+	if cliFilter == "" || cliFilter == "codex" {
+		results, err := SearchCodex(projectPath, query, mode, 0)
+		if err == nil {
+			all = append(all, results...)
+		}
+	}
+
+	// Sort by newest session first.
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].Meta.ModifiedAt.After(all[j].Meta.ModifiedAt)
+	})
+
+	if limit > 0 && len(all) > limit {
+		all = all[:limit]
+	}
+
+	return all, nil
 }
