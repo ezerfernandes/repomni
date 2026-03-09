@@ -165,6 +165,8 @@ repomni eject --all /path/to/my-clones
 | `branch review` | Submit a review on the attached PR/MR |
 | `branch merge` | Merge the attached PR/MR |
 | `branch clean [dir]` | Remove branch repos in terminal states (merged, closed) |
+| **exec** | |
+| `exec diff [flags] -- <cmd>` | Diff command output between main and branch repos |
 | **sync** | |
 | `sync [dir]` | Pull code updates and refresh PR/MR status |
 | `sync code [dir]` | Pull updates for all repos in a directory |
@@ -422,6 +424,24 @@ repomni branch merge --rebase --delete-branch
 | `--squash` | Squash commits before merging |
 | `--rebase` | Rebase before merging |
 | `--delete-branch` | Delete the branch after merging |
+
+### `exec diff`
+
+Run a command in both the main (parent) repo and the current branch repo, then display a unified diff of their outputs. Especially useful for linters and test commands to see how many errors the branch is adding or removing compared to main.
+
+Use `--` to separate repomni flags from the command to run.
+
+```sh
+repomni exec diff -- make lint
+repomni exec diff --no-sync -- go vet ./...
+repomni exec diff --name-only -- npm test
+```
+
+| Flag | Description |
+|---|---|
+| `--no-sync` | Skip fetch+pull on the main repo |
+| `--name-only` | Only show whether outputs differ |
+| `--main-dir` | Explicit path to the main repo |
 
 ### `sync`
 
