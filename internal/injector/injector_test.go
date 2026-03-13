@@ -1827,3 +1827,45 @@ func TestStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateTargetPath(t *testing.T) {
+	tests := []struct {
+		name       string
+		targetPath string
+		wantErr    bool
+	}{
+		{"normal relative path", ".claude/skills", false},
+		{"simple file", ".env", false},
+		{"traversal with dotdot", "../etc/passwd", true},
+		{"deep traversal", "../../.ssh/id_rsa", true},
+		{"hidden traversal via clean", "foo/../../..", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateTargetPath("/tmp/repo", tt.targetPath)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateTargetPath(%q) error = %v, wantErr %v", tt.targetPath, err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestInjectRejectsPathTraversal(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	cfg.Items = []config.Item{
+		{Type: config.ItemTypeFile, SourcePath: "hooks.json", TargetPath: "../escape.txt", Enabled: true},
+	}
+
+	results, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink})
+	if err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	if len(results) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(results))
+	}
+	if results[0].Action != "error" {
+		t.Errorf("expected action 'error' for traversal path, got %q: %s", results[0].Action, results[0].Detail)
+	}
+}

@@ -12,6 +12,19 @@ import (
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 )
 
+// validateTargetPath checks that targetPath does not escape baseDir via path traversal.
+func validateTargetPath(baseDir, targetPath string) error {
+	joined := filepath.Join(baseDir, targetPath)
+	rel, err := filepath.Rel(baseDir, joined)
+	if err != nil {
+		return fmt.Errorf("invalid target path %q: %w", targetPath, err)
+	}
+	if strings.HasPrefix(rel, "..") {
+		return fmt.Errorf("target path %q escapes target directory", targetPath)
+	}
+	return nil
+}
+
 // Result describes the outcome of injecting or ejecting a single item.
 type Result struct {
 	Item   config.Item
@@ -112,6 +125,12 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 	envSearch := findEnvInParents(targetDir)
 
 	for _, item := range cfg.EnabledItems() {
+		// Validate target path does not escape targetDir
+		if err := validateTargetPath(targetDir, item.TargetPath); err != nil {
+			results = append(results, Result{Item: item, Action: "error", Detail: err.Error()})
+			continue
+		}
+
 		src := filepath.Join(sourceDir, item.SourcePath)
 		dst := filepath.Join(targetDir, item.TargetPath)
 
@@ -229,6 +248,12 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 	var results []Result
 
 	for _, item := range cfg.EnabledItems() {
+		// Validate target path does not escape targetDir
+		if err := validateTargetPath(targetDir, item.TargetPath); err != nil {
+			results = append(results, Result{Item: item, Action: "error", Detail: err.Error()})
+			continue
+		}
+
 		dst := filepath.Join(targetDir, item.TargetPath)
 
 		// Directory items get per-entry ejection
@@ -687,22 +712,37 @@ func createSymlink(item config.Item, src, dst string, force bool) Result {
 		if existing == src {
 			return Result{Item: item, Action: "skipped", Detail: "already up to date"}
 		}
-		// Symlink exists but points elsewhere — remove and recreate
-		os.Remove(dst)
-	} else {
-		// Check if a regular file/dir exists
-		if _, statErr := os.Lstat(dst); statErr == nil {
-			if !force {
-				return Result{Item: item, Action: "skipped", Detail: "regular file exists (use --force to overwrite)"}
-			}
-			os.RemoveAll(dst)
+		// Symlink exists but points elsewhere — atomic replace via temp symlink + rename
+		return atomicSymlink(item, src, dst)
+	}
+
+	// Check if a regular file/dir exists
+	if _, statErr := os.Lstat(dst); statErr == nil {
+		if !force {
+			return Result{Item: item, Action: "skipped", Detail: "regular file exists (use --force to overwrite)"}
 		}
+		os.RemoveAll(dst)
 	}
 
 	if err := os.Symlink(src, dst); err != nil {
 		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot create symlink: %v", err)}
 	}
 
+	return Result{Item: item, Action: "created", Detail: fmt.Sprintf("symlinked -> %s", src)}
+}
+
+// atomicSymlink replaces dst with a symlink to src using a temp file + rename
+// to avoid TOCTOU race conditions.
+func atomicSymlink(item config.Item, src, dst string) Result {
+	tmp := dst + ".repomni.tmp"
+	os.Remove(tmp) // clean up any stale temp
+	if err := os.Symlink(src, tmp); err != nil {
+		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot create temp symlink: %v", err)}
+	}
+	if err := os.Rename(tmp, dst); err != nil {
+		os.Remove(tmp)
+		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot replace symlink: %v", err)}
+	}
 	return Result{Item: item, Action: "created", Detail: fmt.Sprintf("symlinked -> %s", src)}
 }
 

@@ -33,7 +33,7 @@ func SaveScript(gitDir string, scriptType string, content string) error {
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return fmt.Errorf("create script directory: %w", err)
 	}
-	return os.WriteFile(ScriptPath(gitDir, scriptType), []byte(content), 0755)
+	return os.WriteFile(ScriptPath(gitDir, scriptType), []byte(content), 0700)
 }
 
 // DeleteScript removes a script file.

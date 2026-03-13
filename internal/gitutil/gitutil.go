@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -67,6 +68,15 @@ func FindGitRepos(parentDir string) ([]string, error) {
 	return repos, nil
 }
 
+// sanitizeStderr strips potential credentials from stderr output before
+// including it in error messages. Git URLs may contain embedded passwords
+// (e.g. https://user:token@host/repo) that should not leak.
+func sanitizeStderr(s string) string {
+	// Match URLs with embedded credentials: scheme://user:pass@host
+	re := regexp.MustCompile(`(https?://)([^:@]+):([^@]+)@`)
+	return re.ReplaceAllString(s, "${1}${2}:***@")
+}
+
 // RunGit executes a git command in the given directory and returns trimmed stdout.
 func RunGit(dir string, args ...string) (string, error) {
 	cmd := exec.Command("git", args...)
@@ -75,7 +85,7 @@ func RunGit(dir string, args ...string) (string, error) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %s: %w", strings.Join(args, " "), strings.TrimSpace(stderr.String()), err)
+		return "", fmt.Errorf("git %s: %s: %w", strings.Join(args, " "), sanitizeStderr(strings.TrimSpace(stderr.String())), err)
 	}
 	return strings.TrimSpace(stdout.String()), nil
 }
