@@ -6,6 +6,7 @@ import (
 
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -28,11 +29,15 @@ Use "set-state --clear" to remove the state and merge URL.`,
 	RunE: runSetState,
 }
 
-var setStateClear bool
+var (
+	setStateClear bool
+	setStateJSON  bool
+)
 
 func init() {
 	branchCmd.AddCommand(setStateCmd)
 	setStateCmd.Flags().BoolVar(&setStateClear, "clear", false, "remove the workflow state and merge URL")
+	setStateCmd.Flags().BoolVar(&setStateJSON, "json", false, "output as JSON")
 }
 
 func runSetState(cmd *cobra.Command, args []string) error {
@@ -68,6 +73,12 @@ func runSetState(cmd *cobra.Command, args []string) error {
 		if err := repoconfig.Save(gitDir, cfg); err != nil {
 			return err
 		}
+		if setStateJSON {
+			return ui.PrintJSON(struct {
+				State    string `json:"state"`
+				MergeURL string `json:"merge_url"`
+			}{State: "", MergeURL: ""})
+		}
 		fmt.Println("State and merge URL cleared.")
 		return nil
 	}
@@ -89,6 +100,13 @@ func runSetState(cmd *cobra.Command, args []string) error {
 
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if setStateJSON {
+		return ui.PrintJSON(struct {
+			State    string `json:"state"`
+			MergeURL string `json:"merge_url,omitempty"`
+		}{State: state, MergeURL: cfg.MergeURL})
 	}
 
 	if cfg.MergeURL != "" {

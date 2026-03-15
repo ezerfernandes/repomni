@@ -32,6 +32,8 @@ var (
 	injectForce   bool
 	injectCopy    bool
 	injectSymlink bool
+	injectJSON    bool
+	injectYes     bool
 )
 
 func init() {
@@ -41,6 +43,8 @@ func init() {
 	injectCmd.Flags().BoolVar(&injectForce, "force", false, "overwrite existing regular files")
 	injectCmd.Flags().BoolVar(&injectCopy, "copy", false, "use copy mode for this run")
 	injectCmd.Flags().BoolVar(&injectSymlink, "symlink", false, "use symlink mode for this run")
+	injectCmd.Flags().BoolVar(&injectJSON, "json", false, "output as JSON")
+	injectCmd.Flags().BoolVarP(&injectYes, "yes", "y", false, "skip interactive prompts and accept defaults")
 }
 
 // loadRepoConfig attempts to load a per-repo config from the target's git directory.
@@ -91,12 +95,19 @@ func runInject(cmd *cobra.Command, args []string) error {
 			allowedEntries = repoCfg.ToSelectedEntries()
 		}
 
-		selected, err := ui.SelectDirEntries(injectCfg, allowedEntries)
-		if err != nil {
-			return err
-		}
-		if selected != nil {
-			opts.SelectedEntries = selected
+		if injectYes || injectJSON {
+			// Non-interactive: use per-repo saved selections (if any)
+			if allowedEntries != nil {
+				opts.SelectedEntries = allowedEntries
+			}
+		} else {
+			selected, err := ui.SelectDirEntries(injectCfg, allowedEntries)
+			if err != nil {
+				return err
+			}
+			if selected != nil {
+				opts.SelectedEntries = selected
+			}
 		}
 	}
 
@@ -113,13 +124,23 @@ func runInject(cmd *cobra.Command, args []string) error {
 		targets = []string{target}
 	}
 
+	type jsonInjectResult struct {
+		Target string `json:"target"`
+		Action string `json:"action"`
+		Item   string `json:"item"`
+		Detail string `json:"detail"`
+	}
+	var jsonResults []jsonInjectResult
+
 	hasErrors := false
 	for _, t := range targets {
 		targetCfg := injectCfg
 
 		// For --all, apply per-repo config per target.
 		if injectAll {
-			fmt.Printf("\nInjecting into %s...\n", t)
+			if !injectJSON {
+				fmt.Printf("\nInjecting into %s...\n", t)
+			}
 			repoCfg, _ := loadRepoConfig(t)
 			if repoCfg != nil {
 				targetCfg = repoCfg.FilterGlobalConfig(cfg)
@@ -132,18 +153,39 @@ func runInject(cmd *cobra.Command, args []string) error {
 
 		results, err := injector.Inject(targetCfg, t, opts)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			if !injectJSON {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			}
 			hasErrors = true
 			continue
 		}
 
-		ui.PrintResults(results)
+		if injectJSON {
+			for _, r := range results {
+				jsonResults = append(jsonResults, jsonInjectResult{
+					Target: t,
+					Action: r.Action,
+					Item:   r.Item.TargetPath,
+					Detail: r.Detail,
+				})
+			}
+		} else {
+			ui.PrintResults(results)
+		}
 
 		for _, r := range results {
 			if r.Action == "error" {
 				hasErrors = true
 			}
 		}
+	}
+
+	if injectJSON {
+		ui.PrintJSON(jsonResults)
+		if hasErrors {
+			return fmt.Errorf("some items had errors")
+		}
+		return nil
 	}
 
 	if injectDryRun {

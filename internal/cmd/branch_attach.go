@@ -8,6 +8,7 @@ import (
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/mergestatus"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -26,11 +27,15 @@ Or discover the PR/MR for the current branch automatically:
 	RunE: runAttach,
 }
 
-var attachCurrent bool
+var (
+	attachCurrent bool
+	attachJSON    bool
+)
 
 func init() {
 	branchCmd.AddCommand(attachCmd)
 	attachCmd.Flags().BoolVar(&attachCurrent, "current", false, "discover PR/MR for the current branch")
+	attachCmd.Flags().BoolVar(&attachJSON, "json", false, "output as JSON")
 }
 
 // ghPRViewFull is used to parse the full pr view JSON for attach.
@@ -104,8 +109,28 @@ func attachFromURL(mergeURL, repoRoot, gitDir string, cfg *repoconfig.RepoConfig
 		return err
 	}
 
+	if attachJSON {
+		return printAttachJSON(cfg, state)
+	}
+
 	fmt.Printf("Attached: %s (state: %s)\n", cfg.MergeURL, state)
 	return nil
+}
+
+func printAttachJSON(cfg *repoconfig.RepoConfig, state string) error {
+	return ui.PrintJSON(struct {
+		MergeURL    string `json:"merge_url"`
+		MergeNumber int    `json:"merge_number"`
+		State       string `json:"state"`
+		Draft       bool   `json:"draft"`
+		BaseBranch  string `json:"base_branch,omitempty"`
+	}{
+		MergeURL:    cfg.MergeURL,
+		MergeNumber: cfg.MergeNumber,
+		State:       state,
+		Draft:       cfg.Draft,
+		BaseBranch:  cfg.BaseBranch,
+	})
 }
 
 func attachFromCurrentBranch(repoRoot, gitDir string, cfg *repoconfig.RepoConfig) error {
@@ -159,6 +184,10 @@ func attachFromCurrentBranch(repoRoot, gitDir string, cfg *repoconfig.RepoConfig
 
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if attachJSON {
+		return printAttachJSON(cfg, state)
 	}
 
 	fmt.Printf("Attached: %s (state: %s)\n", mergeURL, state)

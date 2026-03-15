@@ -7,6 +7,7 @@ import (
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/mergestatus"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -17,8 +18,11 @@ var readyCmd = &cobra.Command{
 	RunE:  runReady,
 }
 
+var readyJSON bool
+
 func init() {
 	branchCmd.AddCommand(readyCmd)
+	readyCmd.Flags().BoolVar(&readyJSON, "json", false, "output as JSON")
 }
 
 func runReady(cmd *cobra.Command, args []string) error {
@@ -60,6 +64,16 @@ func runReady(cmd *cobra.Command, args []string) error {
 	cfg.Draft = false
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if readyJSON {
+		return ui.PrintJSON(struct {
+			MergeURL string `json:"merge_url"`
+			Draft    bool   `json:"draft"`
+		}{
+			MergeURL: cfg.MergeURL,
+			Draft:    false,
+		})
 	}
 
 	fmt.Println("PR/MR marked as ready for review.")

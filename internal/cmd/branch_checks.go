@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/ezerfernandes/repomni/internal/forge"
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/mergestatus"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -22,14 +24,22 @@ the current branch repo.
 	RunE: runChecks,
 }
 
-var checksWatch bool
+var (
+	checksWatch bool
+	checksJSON  bool
+)
 
 func init() {
 	branchCmd.AddCommand(checksCmd)
 	checksCmd.Flags().BoolVar(&checksWatch, "watch", false, "poll until checks complete")
+	checksCmd.Flags().BoolVar(&checksJSON, "json", false, "output as JSON")
 }
 
 func runChecks(cmd *cobra.Command, args []string) error {
+	if checksWatch && checksJSON {
+		return fmt.Errorf("--watch and --json are mutually exclusive")
+	}
+
 	repoRoot, err := gitutil.RunGit(".", "rev-parse", "--show-toplevel")
 	if err != nil {
 		return fmt.Errorf("not inside a git repository")
@@ -56,6 +66,9 @@ func runChecks(cmd *cobra.Command, args []string) error {
 	if checksWatch {
 		return runChecksWatch(repoRoot, platform)
 	}
+	if checksJSON {
+		return runChecksJSON(repoRoot, platform)
+	}
 	return runChecksOnce(repoRoot, platform)
 }
 
@@ -73,6 +86,34 @@ func runChecksOnce(repoRoot string, platform forge.Platform) error {
 		return fmt.Errorf("failed to get checks: %w", err)
 	}
 	fmt.Println(out)
+	return nil
+}
+
+func runChecksJSON(repoRoot string, platform forge.Platform) error {
+	switch platform {
+	case forge.PlatformGitHub:
+		out, err := forge.RunForgeDir(repoRoot, platform, "pr", "checks", "--json", "name,state,conclusion,detailsUrl")
+		if err != nil {
+			return fmt.Errorf("failed to get checks: %w", err)
+		}
+		// gh already outputs JSON; parse and re-emit through our formatter for consistency
+		var checks []json.RawMessage
+		if err := json.Unmarshal([]byte(out), &checks); err != nil {
+			return fmt.Errorf("cannot parse checks output: %w", err)
+		}
+		return ui.PrintJSON(checks)
+
+	case forge.PlatformGitLab:
+		out, err := forge.RunForgeDir(repoRoot, platform, "ci", "status", "--output", "json")
+		if err != nil {
+			return fmt.Errorf("failed to get checks: %w", err)
+		}
+		var pipelines []json.RawMessage
+		if err := json.Unmarshal([]byte(out), &pipelines); err != nil {
+			return fmt.Errorf("cannot parse ci output: %w", err)
+		}
+		return ui.PrintJSON(pipelines)
+	}
 	return nil
 }
 

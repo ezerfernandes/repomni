@@ -6,10 +6,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/ezerfernandes/repomni/internal/brancher"
 	"github.com/ezerfernandes/repomni/internal/diffutil"
 	"github.com/ezerfernandes/repomni/internal/gitutil"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +33,7 @@ var (
 	execDiffNoSync   bool
 	execDiffNameOnly bool
 	execDiffMainDir  string
+	execDiffJSON     bool
 )
 
 var execDiffCmd = &cobra.Command{
@@ -57,6 +60,7 @@ func init() {
 	execDiffCmd.Flags().BoolVar(&execDiffNoSync, "no-sync", false, "skip fetch+pull on the main repo")
 	execDiffCmd.Flags().BoolVar(&execDiffNameOnly, "name-only", false, "only show whether outputs differ")
 	execDiffCmd.Flags().StringVar(&execDiffMainDir, "main-dir", "", "explicit path to the main repo")
+	execDiffCmd.Flags().BoolVar(&execDiffJSON, "json", false, "output as JSON")
 }
 
 func runExecDiff(cmd *cobra.Command, args []string) error {
@@ -87,15 +91,23 @@ func runExecDiff(cmd *cobra.Command, args []string) error {
 
 	// Sync main repo.
 	if !execDiffNoSync {
-		syncMainRepo(mainDir)
+		syncMainRepo(mainDir, execDiffJSON)
 	}
 
 	// Run command in both repos.
-	fmt.Fprintf(os.Stderr, "Running command in main repo (%s)...\n", filepath.Base(mainDir))
+	if !execDiffJSON {
+		fmt.Fprintf(os.Stderr, "Running command in main repo (%s)...\n", filepath.Base(mainDir))
+	}
 	mainRes := captureCommand(mainDir, userCmd[0], userCmd[1:]...)
 
-	fmt.Fprintf(os.Stderr, "Running command in branch repo (%s)...\n", filepath.Base(branchDir))
+	if !execDiffJSON {
+		fmt.Fprintf(os.Stderr, "Running command in branch repo (%s)...\n", filepath.Base(branchDir))
+	}
 	branchRes := captureCommand(branchDir, userCmd[0], userCmd[1:]...)
+
+	if execDiffJSON {
+		return outputExecDiffJSON(mainRes, branchRes, mainDir, branchDir, userCmd)
+	}
 
 	outcome := compareResults(mainRes, branchRes, execDiffNameOnly)
 	if outcome.Stderr != "" {
@@ -106,6 +118,52 @@ func runExecDiff(cmd *cobra.Command, args []string) error {
 	}
 	if outcome.ExitCode != 0 {
 		os.Exit(outcome.ExitCode)
+	}
+	return nil
+}
+
+func outputExecDiffJSON(mainRes, branchRes commandResult, mainDir, branchDir string, userCmd []string) error {
+	type cmdOutput struct {
+		Dir      string `json:"dir"`
+		Output   string `json:"output"`
+		ExitCode int    `json:"exit_code"`
+		Error    string `json:"error,omitempty"`
+	}
+
+	mainErr := ""
+	if mainRes.Err != nil {
+		mainErr = mainRes.Err.Error()
+	}
+	branchErr := ""
+	if branchRes.Err != nil {
+		branchErr = branchRes.Err.Error()
+	}
+
+	identical := mainRes.Output == branchRes.Output && mainRes.ExitCode == branchRes.ExitCode && mainRes.Err == nil && branchRes.Err == nil
+
+	diff := ""
+	if !identical && mainRes.Err == nil && branchRes.Err == nil {
+		diff = diffutil.UnifiedDiff("main", "branch", mainRes.Output, branchRes.Output)
+	}
+
+	out := struct {
+		Command   string    `json:"command"`
+		Identical bool      `json:"identical"`
+		Diff      string    `json:"diff,omitempty"`
+		Main      cmdOutput `json:"main"`
+		Branch    cmdOutput `json:"branch"`
+	}{
+		Command:   strings.Join(userCmd, " "),
+		Identical: identical,
+		Diff:      diff,
+		Main:      cmdOutput{Dir: mainDir, Output: mainRes.Output, ExitCode: mainRes.ExitCode, Error: mainErr},
+		Branch:    cmdOutput{Dir: branchDir, Output: branchRes.Output, ExitCode: branchRes.ExitCode, Error: branchErr},
+	}
+	if err := ui.PrintJSON(out); err != nil {
+		return err
+	}
+	if !identical {
+		os.Exit(1)
 	}
 	return nil
 }
@@ -141,14 +199,20 @@ func resolveMainDir(branchDir string) (string, error) {
 }
 
 // syncMainRepo fetches and pulls the main repo, printing warnings on failure.
-func syncMainRepo(mainDir string) {
-	fmt.Fprintf(os.Stderr, "Syncing main repo...\n")
+func syncMainRepo(mainDir string, quiet bool) {
+	if !quiet {
+		fmt.Fprintf(os.Stderr, "Syncing main repo...\n")
+	}
 	if err := gitutil.Fetch(mainDir); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: fetch failed: %v\n", err)
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "Warning: fetch failed: %v\n", err)
+		}
 		return
 	}
 	if _, err := gitutil.Pull(mainDir, "ff-only", false); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: pull failed: %v (continuing with current state)\n", err)
+		if !quiet {
+			fmt.Fprintf(os.Stderr, "Warning: pull failed: %v (continuing with current state)\n", err)
+		}
 	}
 }
 

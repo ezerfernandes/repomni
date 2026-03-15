@@ -8,6 +8,7 @@ import (
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
 	"github.com/ezerfernandes/repomni/internal/scripter"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -29,12 +30,14 @@ This is useful for creating isolated working copies for existing branches.`,
 var (
 	cloneNoInject bool
 	cloneTicket   string
+	cloneJSON     bool
 )
 
 func init() {
 	branchCmd.AddCommand(cloneCmd)
 	cloneCmd.Flags().BoolVar(&cloneNoInject, "no-inject", false, "skip automatic injection into the new clone")
 	cloneCmd.Flags().StringVar(&cloneTicket, "ticket", "", "associate a ticket identifier (e.g., PROJ-123)")
+	cloneCmd.Flags().BoolVar(&cloneJSON, "json", false, "output as JSON")
 }
 
 func runClone(cmd *cobra.Command, args []string) error {
@@ -42,14 +45,16 @@ func runClone(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Cloned %s into %s\n", result.RemoteURL, result.TargetDir)
-	fmt.Printf("Checked out branch: %s\n", result.Branch)
+	if !cloneJSON {
+		fmt.Printf("Cloned %s into %s\n", result.RemoteURL, result.TargetDir)
+		fmt.Printf("Checked out branch: %s\n", result.Branch)
+	}
 
 	parentGitDir, parentGitDirErr := gitutil.FindGitDir(result.ParentRepo)
 
 	// Auto-inject into the new repo unless --no-inject is set.
 	if !cloneNoInject {
-		if err := autoInject(result, parentGitDir, parentGitDirErr); err != nil {
+		if err := autoInject(result, parentGitDir, parentGitDirErr, cloneJSON); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-injection failed: %v\n", err)
 		}
 	}
@@ -71,11 +76,25 @@ func runClone(cmd *cobra.Command, args []string) error {
 	// Run setup script if configured in the parent repo.
 	if parentGitDirErr == nil {
 		if _, exists := scripter.GetScript(parentGitDir, scripter.ScriptSetup); exists {
-			fmt.Println("Running setup script...")
+			if !cloneJSON {
+				fmt.Println("Running setup script...")
+			}
 			if err := scripter.RunScript(parentGitDir, scripter.ScriptSetup, result.TargetDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: setup script failed: %v\n", err)
 			}
 		}
+	}
+
+	if cloneJSON {
+		return ui.PrintJSON(branchResult{
+			Path:       result.TargetDir,
+			Branch:     result.Branch,
+			RemoteURL:  result.RemoteURL,
+			ParentRepo: result.ParentRepo,
+			State:      string(repoconfig.StateActive),
+			Remote:     true,
+			Ticket:     cloneTicket,
+		})
 	}
 
 	return nil

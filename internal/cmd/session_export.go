@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ezerfernandes/repomni/internal/session"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -23,6 +24,7 @@ var (
 	sessionExportOutput  string
 	sessionExportFull    bool
 	sessionExportNoTools bool
+	sessionExportJSON    bool
 )
 
 func init() {
@@ -33,6 +35,7 @@ func init() {
 		"include full tool_use/tool_result blocks")
 	sessionExportCmd.Flags().BoolVar(&sessionExportNoTools, "no-tools", false,
 		"omit messages that only contain tool calls")
+	sessionExportCmd.Flags().BoolVar(&sessionExportJSON, "json", false, "output as JSON")
 }
 
 func runSessionExport(cmd *cobra.Command, args []string) error {
@@ -84,6 +87,36 @@ func runSessionExport(cmd *cobra.Command, args []string) error {
 	}
 
 	output := b.String()
+
+	if sessionExportJSON {
+		outPath := sessionExportOutput
+		if outPath != "" {
+			if err := os.WriteFile(outPath, []byte(output), 0644); err != nil {
+				return fmt.Errorf("cannot write to %s: %w", outPath, err)
+			}
+		}
+		return ui.PrintJSON(struct {
+			SessionID    string  `json:"session_id"`
+			ProjectPath  string  `json:"project_path"`
+			FilePath     string  `json:"file_path"`
+			CreatedAt    string  `json:"created_at"`
+			DurationSecs float64 `json:"duration_seconds"`
+			MessageCount int     `json:"message_count"`
+			SizeBytes    int64   `json:"size_bytes"`
+			OutputPath   string  `json:"output_path,omitempty"`
+			OutputBytes  int     `json:"output_bytes"`
+		}{
+			SessionID:    meta.SessionID,
+			ProjectPath:  meta.ProjectPath,
+			FilePath:     meta.FilePath,
+			CreatedAt:    meta.CreatedAt.Format(time.RFC3339),
+			DurationSecs: meta.DurationSecs,
+			MessageCount: meta.MessageCount,
+			SizeBytes:    meta.SizeBytes,
+			OutputPath:   outPath,
+			OutputBytes:  len(output),
+		})
+	}
 
 	if sessionExportOutput != "" {
 		if err := os.WriteFile(sessionExportOutput, []byte(output), 0644); err != nil {
