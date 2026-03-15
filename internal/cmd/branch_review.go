@@ -7,6 +7,7 @@ import (
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/mergestatus"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -24,12 +25,14 @@ var reviewCmd = &cobra.Command{
 var (
 	reviewApprove bool
 	reviewComment string
+	reviewJSON    bool
 )
 
 func init() {
 	branchCmd.AddCommand(reviewCmd)
 	reviewCmd.Flags().BoolVar(&reviewApprove, "approve", false, "approve the PR/MR")
 	reviewCmd.Flags().StringVar(&reviewComment, "comment", "", "leave a review comment")
+	reviewCmd.Flags().BoolVar(&reviewJSON, "json", false, "output as JSON")
 }
 
 func runReview(cmd *cobra.Command, args []string) error {
@@ -60,24 +63,40 @@ func runReview(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var reviewErr error
 	switch platform {
 	case forge.PlatformGitHub:
-		return reviewGitHub(repoRoot, cfg)
+		reviewErr = reviewGitHub(repoRoot, cfg)
 	case forge.PlatformGitLab:
-		return reviewGitLab(repoRoot, cfg)
+		reviewErr = reviewGitLab(repoRoot, cfg)
+	}
+	if reviewErr != nil {
+		return reviewErr
+	}
+	if reviewJSON {
+		return ui.PrintJSON(struct {
+			MergeURL string `json:"merge_url"`
+			Approved bool   `json:"approved"`
+			Comment  string `json:"comment,omitempty"`
+		}{
+			MergeURL: cfg.MergeURL,
+			Approved: reviewApprove,
+			Comment:  reviewComment,
+		})
 	}
 	return nil
 }
 
 func reviewGitHub(repoRoot string, _ *repoconfig.RepoConfig) error {
 	if reviewApprove && reviewComment != "" {
-		// gh pr review supports both at once
 		_, err := forge.RunForgeDir(repoRoot, forge.PlatformGitHub,
 			"pr", "review", "--approve", "--body", reviewComment)
 		if err != nil {
 			return fmt.Errorf("review failed: %w", err)
 		}
-		fmt.Println("Approved with comment.")
+		if !reviewJSON {
+			fmt.Println("Approved with comment.")
+		}
 		return nil
 	}
 	if reviewApprove {
@@ -85,14 +104,18 @@ func reviewGitHub(repoRoot string, _ *repoconfig.RepoConfig) error {
 			"pr", "review", "--approve"); err != nil {
 			return fmt.Errorf("approve failed: %w", err)
 		}
-		fmt.Println("Approved.")
+		if !reviewJSON {
+			fmt.Println("Approved.")
+		}
 		return nil
 	}
 	if _, err := forge.RunForgeDir(repoRoot, forge.PlatformGitHub,
 		"pr", "review", "--comment", "--body", reviewComment); err != nil {
 		return fmt.Errorf("comment failed: %w", err)
 	}
-	fmt.Println("Comment submitted.")
+	if !reviewJSON {
+		fmt.Println("Comment submitted.")
+	}
 	return nil
 }
 
@@ -104,14 +127,18 @@ func reviewGitLab(repoRoot string, cfg *repoconfig.RepoConfig) error {
 			"mr", "approve", mrID); err != nil {
 			return fmt.Errorf("approve failed: %w", err)
 		}
-		fmt.Println("Approved.")
+		if !reviewJSON {
+			fmt.Println("Approved.")
+		}
 	}
 	if reviewComment != "" {
 		if _, err := forge.RunForgeDir(repoRoot, forge.PlatformGitLab,
 			"mr", "note", mrID, "--message", reviewComment); err != nil {
 			return fmt.Errorf("comment failed: %w", err)
 		}
-		fmt.Println("Comment submitted.")
+		if !reviewJSON {
+			fmt.Println("Comment submitted.")
+		}
 	}
 	return nil
 }

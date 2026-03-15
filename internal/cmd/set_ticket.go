@@ -5,6 +5,7 @@ import (
 
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -23,11 +24,15 @@ Use "set-ticket --clear" to remove the ticket.`,
 	RunE: runSetTicket,
 }
 
-var setTicketClear bool
+var (
+	setTicketClear bool
+	setTicketJSON  bool
+)
 
 func init() {
 	branchCmd.AddCommand(setTicketCmd)
 	setTicketCmd.Flags().BoolVar(&setTicketClear, "clear", false, "remove the ticket identifier")
+	setTicketCmd.Flags().BoolVar(&setTicketJSON, "json", false, "output as JSON")
 }
 
 func runSetTicket(cmd *cobra.Command, args []string) error {
@@ -58,6 +63,11 @@ func runSetTicket(cmd *cobra.Command, args []string) error {
 		if err := repoconfig.Save(gitDir, cfg); err != nil {
 			return err
 		}
+		if setTicketJSON {
+			return ui.PrintJSON(struct {
+				Ticket string `json:"ticket"`
+			}{Ticket: ""})
+		}
 		fmt.Println("Ticket cleared.")
 		return nil
 	}
@@ -65,6 +75,12 @@ func runSetTicket(cmd *cobra.Command, args []string) error {
 	cfg.Ticket = args[0]
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if setTicketJSON {
+		return ui.PrintJSON(struct {
+			Ticket string `json:"ticket"`
+		}{Ticket: cfg.Ticket})
 	}
 
 	fmt.Printf("Ticket set to: %s\n", cfg.Ticket)

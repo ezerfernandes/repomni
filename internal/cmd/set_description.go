@@ -5,6 +5,7 @@ import (
 
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -21,11 +22,15 @@ Use "set-description --clear" to remove the description.`,
 	RunE: runSetDescription,
 }
 
-var setDescriptionClear bool
+var (
+	setDescriptionClear bool
+	setDescriptionJSON  bool
+)
 
 func init() {
 	branchCmd.AddCommand(setDescriptionCmd)
 	setDescriptionCmd.Flags().BoolVar(&setDescriptionClear, "clear", false, "remove the description")
+	setDescriptionCmd.Flags().BoolVar(&setDescriptionJSON, "json", false, "output as JSON")
 }
 
 func runSetDescription(cmd *cobra.Command, args []string) error {
@@ -56,6 +61,11 @@ func runSetDescription(cmd *cobra.Command, args []string) error {
 		if err := repoconfig.Save(gitDir, cfg); err != nil {
 			return err
 		}
+		if setDescriptionJSON {
+			return ui.PrintJSON(struct {
+				Description string `json:"description"`
+			}{Description: ""})
+		}
 		fmt.Println("Description cleared.")
 		return nil
 	}
@@ -63,6 +73,12 @@ func runSetDescription(cmd *cobra.Command, args []string) error {
 	cfg.Description = args[0]
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if setDescriptionJSON {
+		return ui.PrintJSON(struct {
+			Description string `json:"description"`
+		}{Description: cfg.Description})
 	}
 
 	fmt.Printf("Description set to: %s\n", cfg.Description)

@@ -14,6 +14,17 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// branchResult is the JSON output for branch create/clone commands.
+type branchResult struct {
+	Path       string `json:"path"`
+	Branch     string `json:"branch"`
+	RemoteURL  string `json:"remote_url"`
+	ParentRepo string `json:"parent_repo"`
+	State      string `json:"state"`
+	Remote     bool   `json:"remote"`
+	Ticket     string `json:"ticket,omitempty"`
+}
+
 var createCmd = &cobra.Command{
 	Use:   "create <branch-name>",
 	Short: "Clone the parent repo and create a new branch",
@@ -29,12 +40,14 @@ This is useful for creating isolated working copies for feature branches.`,
 var (
 	createNoInject bool
 	createTicket   string
+	createJSON     bool
 )
 
 func init() {
 	branchCmd.AddCommand(createCmd)
 	createCmd.Flags().BoolVar(&createNoInject, "no-inject", false, "skip automatic injection into the new branch")
 	createCmd.Flags().StringVar(&createTicket, "ticket", "", "associate a ticket identifier (e.g., PROJ-123)")
+	createCmd.Flags().BoolVar(&createJSON, "json", false, "output as JSON")
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
@@ -42,14 +55,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Cloned %s into %s\n", result.RemoteURL, result.TargetDir)
-	fmt.Printf("Checked out new branch: %s\n", result.Branch)
+	if !createJSON {
+		fmt.Printf("Cloned %s into %s\n", result.RemoteURL, result.TargetDir)
+		fmt.Printf("Checked out new branch: %s\n", result.Branch)
+	}
 
 	parentGitDir, parentGitDirErr := gitutil.FindGitDir(result.ParentRepo)
 
 	// Auto-inject into the new repo unless --no-inject is set.
 	if !createNoInject {
-		if err := autoInject(result, parentGitDir, parentGitDirErr); err != nil {
+		if err := autoInject(result, parentGitDir, parentGitDirErr, createJSON); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: auto-injection failed: %v\n", err)
 		}
 	}
@@ -71,17 +86,31 @@ func runCreate(cmd *cobra.Command, args []string) error {
 	// Run setup script if configured in the parent repo.
 	if parentGitDirErr == nil {
 		if _, exists := scripter.GetScript(parentGitDir, scripter.ScriptSetup); exists {
-			fmt.Println("Running setup script...")
+			if !createJSON {
+				fmt.Println("Running setup script...")
+			}
 			if err := scripter.RunScript(parentGitDir, scripter.ScriptSetup, result.TargetDir); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: setup script failed: %v\n", err)
 			}
 		}
 	}
 
+	if createJSON {
+		return ui.PrintJSON(branchResult{
+			Path:       result.TargetDir,
+			Branch:     result.Branch,
+			RemoteURL:  result.RemoteURL,
+			ParentRepo: result.ParentRepo,
+			State:      string(repoconfig.StateActive),
+			Remote:     false,
+			Ticket:     createTicket,
+		})
+	}
+
 	return nil
 }
 
-func autoInject(result *brancher.Result, parentGitDir string, parentGitDirErr error) error {
+func autoInject(result *brancher.Result, parentGitDir string, parentGitDirErr error, quiet bool) error {
 	globalCfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("cannot load global config: %w", err)
@@ -104,13 +133,17 @@ func autoInject(result *brancher.Result, parentGitDir string, parentGitDirErr er
 		SelectedEntries: selectedEntries,
 	}
 
-	fmt.Println("Injecting configured files...")
+	if !quiet {
+		fmt.Println("Injecting configured files...")
+	}
 	results, err := injector.Inject(effectiveCfg, result.TargetDir, opts)
 	if err != nil {
 		return err
 	}
 
-	ui.PrintResults(results)
+	if !quiet {
+		ui.PrintResults(results)
+	}
 
 	// Copy parent's per-repo config to the new repo so future inject runs
 	// in the branch use the same settings.

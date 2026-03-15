@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 
 	"github.com/ezerfernandes/repomni/internal/gitutil"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -19,11 +20,15 @@ If no directory is specified, the current directory is used.`,
 	RunE: runList,
 }
 
-var listNames bool
+var (
+	listNames bool
+	listJSON  bool
+)
 
 func init() {
 	rootCmd.AddCommand(listCmd)
 	listCmd.Flags().BoolVar(&listNames, "names", false, "output only repo directory names")
+	listCmd.Flags().BoolVar(&listJSON, "json", false, "output as JSON")
 }
 
 func runList(cmd *cobra.Command, args []string) error {
@@ -42,6 +47,18 @@ func runList(cmd *cobra.Command, args []string) error {
 	}
 	if len(repos) == 0 {
 		return fmt.Errorf("no git repositories found under %s", target)
+	}
+
+	if listJSON {
+		type listEntry struct {
+			Path string `json:"path"`
+			Name string `json:"name"`
+		}
+		entries := make([]listEntry, len(repos))
+		for i, repo := range repos {
+			entries[i] = listEntry{Path: repo, Name: filepath.Base(repo)}
+		}
+		return ui.PrintJSON(entries)
 	}
 
 	for _, repo := range repos {

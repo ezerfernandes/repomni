@@ -24,11 +24,15 @@ Use --all to eject from all git repos under the target directory.`,
 	RunE: runEject,
 }
 
-var ejectAll bool
+var (
+	ejectAll  bool
+	ejectJSON bool
+)
 
 func init() {
 	rootCmd.AddCommand(ejectCmd)
 	ejectCmd.Flags().BoolVar(&ejectAll, "all", false, "eject from all git repos under target directory")
+	ejectCmd.Flags().BoolVar(&ejectJSON, "json", false, "output as JSON")
 }
 
 func runEject(cmd *cobra.Command, args []string) error {
@@ -59,6 +63,14 @@ func runEject(cmd *cobra.Command, args []string) error {
 		targets = []string{target}
 	}
 
+	type jsonEjectResult struct {
+		Target string `json:"target"`
+		Action string `json:"action"`
+		Item   string `json:"item"`
+		Detail string `json:"detail"`
+	}
+	var jsonResults []jsonEjectResult
+
 	hasErrors := false
 	for _, t := range targets {
 		targetCfg := cfg
@@ -67,27 +79,52 @@ func runEject(cmd *cobra.Command, args []string) error {
 			targetCfg = repoCfg.FilterGlobalConfig(cfg)
 		}
 
-		if ejectAll {
+		if ejectAll && !ejectJSON {
 			fmt.Printf("\nEjecting from %s...\n", t)
 		}
 
 		results, err := injector.Eject(targetCfg, t)
 		if err != nil {
-			if len(results) > 0 {
+			if len(results) > 0 && !ejectJSON {
 				ui.PrintResults(results)
 			}
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			if ejectJSON {
+				for _, r := range results {
+					jsonResults = append(jsonResults, jsonEjectResult{
+						Target: t, Action: r.Action, Item: r.Item.TargetPath, Detail: r.Detail,
+					})
+				}
+			}
+			if !ejectJSON {
+				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			}
 			hasErrors = true
 			continue
 		}
 
-		ui.PrintResults(results)
+		if ejectJSON {
+			for _, r := range results {
+				jsonResults = append(jsonResults, jsonEjectResult{
+					Target: t, Action: r.Action, Item: r.Item.TargetPath, Detail: r.Detail,
+				})
+			}
+		} else {
+			ui.PrintResults(results)
+		}
 
 		for _, r := range results {
 			if r.Action == "error" {
 				hasErrors = true
 			}
 		}
+	}
+
+	if ejectJSON {
+		ui.PrintJSON(jsonResults)
+		if hasErrors {
+			return fmt.Errorf("some items had errors")
+		}
+		return nil
 	}
 
 	if hasErrors {

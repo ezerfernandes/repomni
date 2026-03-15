@@ -7,6 +7,7 @@ import (
 	"github.com/ezerfernandes/repomni/internal/forge"
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -32,6 +33,7 @@ var (
 	submitBase      string
 	submitTitle     string
 	submitBody      string
+	submitJSON      bool
 )
 
 func init() {
@@ -42,6 +44,7 @@ func init() {
 	submitCmd.Flags().StringVar(&submitBase, "base", "", "base/target branch")
 	submitCmd.Flags().StringVar(&submitTitle, "title", "", "PR/MR title")
 	submitCmd.Flags().StringVar(&submitBody, "body", "", "PR/MR body")
+	submitCmd.Flags().BoolVar(&submitJSON, "json", false, "output as JSON")
 }
 
 func runSubmit(cmd *cobra.Command, args []string) error {
@@ -113,6 +116,20 @@ func runSubmit(cmd *cobra.Command, args []string) error {
 
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if submitJSON {
+		return ui.PrintJSON(struct {
+			MergeURL string `json:"merge_url"`
+			State    string `json:"state"`
+			Draft    bool   `json:"draft"`
+			Branch   string `json:"branch"`
+		}{
+			MergeURL: mergeURL,
+			State:    string(repoconfig.StateReview),
+			Draft:    submitDraft,
+			Branch:   branch,
+		})
 	}
 
 	fmt.Printf("Created: %s\n", mergeURL)

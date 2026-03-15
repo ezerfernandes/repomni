@@ -7,6 +7,7 @@ import (
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"github.com/ezerfernandes/repomni/internal/mergestatus"
 	"github.com/ezerfernandes/repomni/internal/repoconfig"
+	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
 
@@ -25,6 +26,7 @@ var (
 	mergeSquash       bool
 	mergeRebase       bool
 	mergeDeleteBranch bool
+	mergeJSON         bool
 )
 
 func init() {
@@ -32,6 +34,7 @@ func init() {
 	mergeCmd.Flags().BoolVar(&mergeSquash, "squash", false, "squash commits before merging")
 	mergeCmd.Flags().BoolVar(&mergeRebase, "rebase", false, "rebase before merging")
 	mergeCmd.Flags().BoolVar(&mergeDeleteBranch, "delete-branch", false, "delete the branch after merging")
+	mergeCmd.Flags().BoolVar(&mergeJSON, "json", false, "output as JSON")
 }
 
 func runMerge(cmd *cobra.Command, args []string) error {
@@ -68,6 +71,16 @@ func runMerge(cmd *cobra.Command, args []string) error {
 	cfg.Draft = false
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
 		return err
+	}
+
+	if mergeJSON {
+		return ui.PrintJSON(struct {
+			MergeURL string `json:"merge_url"`
+			State    string `json:"state"`
+		}{
+			MergeURL: cfg.MergeURL,
+			State:    string(repoconfig.StateMerged),
+		})
 	}
 
 	fmt.Println("Merged.")
