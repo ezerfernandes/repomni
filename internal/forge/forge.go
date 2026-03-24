@@ -1,4 +1,3 @@
-// Package forge provides utilities for running GitHub CLI (gh) and GitLab CLI (glab) commands.
 package forge
 
 import (
