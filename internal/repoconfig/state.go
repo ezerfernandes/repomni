@@ -40,7 +40,7 @@ func ValidateState(s string) error {
 		return fmt.Errorf("state cannot be empty")
 	}
 	for _, r := range s {
-		if !((r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-') {
+		if (r < 'a' || r > 'z') && (r < '0' || r > '9') && r != '-' {
 			return fmt.Errorf("state must contain only lowercase letters, digits, and hyphens; got %q", string(r))
 		}
 	}

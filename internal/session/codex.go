@@ -274,7 +274,7 @@ func ExtractCodexMeta(filePath string) (*SessionMeta, error) {
 	if err != nil {
 		return nil, fmt.Errorf("cannot open codex session file: %w", err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	info, err := f.Stat()
 	if err != nil {

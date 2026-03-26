@@ -56,9 +56,9 @@ func runSessionExport(cmd *cobra.Command, args []string) error {
 	}
 
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("# Session %s\n\n", meta.SessionID))
-	b.WriteString(fmt.Sprintf("**Project:** %s\n\n", meta.ProjectPath))
-	b.WriteString(fmt.Sprintf("**Created:** %s\n\n", meta.CreatedAt.Format(time.RFC3339)))
+	fmt.Fprintf(&b, "# Session %s\n\n", meta.SessionID)
+	fmt.Fprintf(&b, "**Project:** %s\n\n", meta.ProjectPath)
+	fmt.Fprintf(&b, "**Created:** %s\n\n", meta.CreatedAt.Format(time.RFC3339))
 	b.WriteString(fmt.Sprintf("**Duration:** %s\n\n", formatExportDuration(meta.DurationSecs)))
 	b.WriteString(fmt.Sprintf("**Messages:** %d\n\n", meta.MessageCount))
 	b.WriteString("---\n\n")

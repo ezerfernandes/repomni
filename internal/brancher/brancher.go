@@ -1,6 +1,7 @@
 package brancher
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -132,8 +133,8 @@ func Branch(workDir, branchName string) (*Result, error) {
 	}
 
 	if _, err := gitutil.RunGit(targetDir, "checkout", "-b", branchName); err != nil {
-		os.RemoveAll(targetDir)
-		return nil, fmt.Errorf("git checkout failed: %w", err)
+		cleanupErr := os.RemoveAll(targetDir)
+		return nil, errors.Join(fmt.Errorf("git checkout failed: %w", err), cleanupErr)
 	}
 
 	return &Result{
@@ -178,8 +179,8 @@ func Clone(workDir, branchName string) (*Result, error) {
 	}
 
 	if _, err := gitutil.RunGit(targetDir, "checkout", branchName); err != nil {
-		os.RemoveAll(targetDir)
-		return nil, fmt.Errorf("git checkout failed: %w", err)
+		cleanupErr := os.RemoveAll(targetDir)
+		return nil, errors.Join(fmt.Errorf("git checkout failed: %w", err), cleanupErr)
 	}
 
 	return &Result{

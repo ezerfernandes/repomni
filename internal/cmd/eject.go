@@ -120,7 +120,9 @@ func runEject(cmd *cobra.Command, args []string) error {
 	}
 
 	if ejectJSON {
-		ui.PrintJSON(jsonResults)
+		if err := ui.PrintJSON(jsonResults); err != nil {
+			return err
+		}
 		if hasErrors {
 			return fmt.Errorf("some items had errors")
 		}
