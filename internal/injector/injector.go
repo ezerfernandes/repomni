@@ -767,7 +767,9 @@ func createSymlink(item config.Item, src, dst string, force bool) Result {
 		if !force {
 			return Result{Item: item, Action: "skipped", Detail: "regular file exists (use --force to overwrite)"}
 		}
-		os.RemoveAll(dst)
+		if err := os.RemoveAll(dst); err != nil {
+			return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove existing file: %v", err)}
+		}
 	}
 
 	if err := os.Symlink(src, dst); err != nil {
@@ -781,12 +783,12 @@ func createSymlink(item config.Item, src, dst string, force bool) Result {
 // to avoid TOCTOU race conditions.
 func atomicSymlink(item config.Item, src, dst string) Result {
 	tmp := dst + ".repomni.tmp"
-	os.Remove(tmp) // clean up any stale temp
+	_ = os.Remove(tmp) // clean up any stale temp
 	if err := os.Symlink(src, tmp); err != nil {
 		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot create temp symlink: %v", err)}
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		os.Remove(tmp)
+		_ = os.Remove(tmp)
 		return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot replace symlink: %v", err)}
 	}
 	return Result{Item: item, Action: "created", Detail: fmt.Sprintf("symlinked -> %s", src)}
@@ -801,7 +803,9 @@ func copyFile(item config.Item, src, dst string, force bool) Result {
 			}
 			return Result{Item: item, Action: "skipped", Detail: "file exists with different content (use --force to overwrite)"}
 		}
-		os.Remove(dst)
+		if err := os.Remove(dst); err != nil {
+			return Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove existing file: %v", err)}
+		}
 	}
 
 	if err := copyFileContent(src, dst); err != nil {
@@ -811,12 +815,12 @@ func copyFile(item config.Item, src, dst string, force bool) Result {
 	return Result{Item: item, Action: "created", Detail: "copied"}
 }
 
-func copyFileContent(src, dst string) error {
+func copyFileContent(src, dst string) (retErr error) {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 
 	info, err := in.Stat()
 	if err != nil {
@@ -827,7 +831,11 @@ func copyFileContent(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		if cerr := out.Close(); retErr == nil {
+			retErr = cerr
+		}
+	}()
 
 	_, err = io.Copy(out, in)
 	return err
@@ -916,7 +924,7 @@ func removeIfEmptyDir(dir string) {
 		return
 	}
 	if len(entries) == 0 {
-		os.Remove(dir)
+		_ = os.Remove(dir)
 	}
 }
 

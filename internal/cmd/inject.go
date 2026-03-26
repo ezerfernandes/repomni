@@ -181,7 +181,9 @@ func runInject(cmd *cobra.Command, args []string) error {
 	}
 
 	if injectJSON {
-		ui.PrintJSON(jsonResults)
+		if err := ui.PrintJSON(jsonResults); err != nil {
+			return err
+		}
 		if hasErrors {
 			return fmt.Errorf("some items had errors")
 		}
