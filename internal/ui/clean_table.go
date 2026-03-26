@@ -20,7 +20,8 @@ func PrintCleanCandidates(candidates []CleanCandidate) {
 	stateW := len("State")
 	sizeW := len("Size")
 
-	for _, c := range candidates {
+	for i := range candidates {
+		c := &candidates[i]
 		if len(c.Info.Name) > nameW {
 			nameW = len(c.Info.Name)
 		}
@@ -46,7 +47,8 @@ func PrintCleanCandidates(candidates []CleanCandidate) {
 		strings.Repeat("─", 10))
 
 	deletable := 0
-	for _, c := range candidates {
+	for i := range candidates {
+		c := &candidates[i]
 		stateDisplay := RenderState(c.Info.State)
 		rawState := c.Info.State
 		if rawState == "" {

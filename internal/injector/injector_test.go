@@ -1,9 +1,11 @@
 package injector
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ezerfernandes/repomni/internal/config"
@@ -152,7 +154,7 @@ func TestInjectCopy(t *testing.T) {
 	rootDir := filepath.Dir(targetDir)
 	src, _ := os.ReadFile(filepath.Join(rootDir, ".envrc"))
 	dst, _ := os.ReadFile(filepath.Join(targetDir, ".envrc"))
-	if string(src) != string(dst) {
+	if !bytes.Equal(src, dst) {
 		t.Error("copied file content does not match source")
 	}
 
@@ -168,7 +170,7 @@ func TestInjectCopy(t *testing.T) {
 
 	srcContent, _ := os.ReadFile(filepath.Join(sourceDir, "skills", "test.md"))
 	dstContent, _ := os.ReadFile(skillDst)
-	if string(srcContent) != string(dstContent) {
+	if !bytes.Equal(srcContent, dstContent) {
 		t.Error("copied skill content does not match source")
 	}
 }
@@ -1274,6 +1276,52 @@ func TestStatusCopyMode(t *testing.T) {
 	}
 }
 
+func TestStatusCopyModeWithDirectoryEntry(t *testing.T) {
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	if err := os.MkdirAll(filepath.Join(sourceDir, "skills", "nested-skill"), 0755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceDir, "skills", "nested-skill", "README.md"), []byte("hello"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeCopy,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	if _, err := Inject(cfg, targetDir, Options{Mode: config.ModeCopy}); err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	statuses, err := Status(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Status failed: %v", err)
+	}
+
+	foundNested := false
+	for _, s := range statuses {
+		if s.Item.TargetPath != ".claude/skills/nested-skill" {
+			continue
+		}
+		foundNested = true
+		if !s.Present || !s.Current {
+			t.Fatalf("nested directory entry should be current after copy inject: %+v", s)
+		}
+		if s.Detail != "copy ok" {
+			t.Fatalf("nested directory entry detail = %q, want copy ok", s.Detail)
+		}
+	}
+	if !foundNested {
+		t.Fatal("expected status for nested-skill directory entry")
+	}
+}
+
 func TestEjectAfterCopyInject(t *testing.T) {
 	_, targetDir, cfg := setupTestEnv(t)
 
@@ -1469,6 +1517,96 @@ func TestEjectDoesNotDeleteUserOwnedFileAtManagedPath(t *testing.T) {
 	}
 }
 
+func TestEjectDoesNotDeleteUserReplacementOfManagedSymlinkFile(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	if _, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink}); err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	envrcPath := filepath.Join(targetDir, ".envrc")
+	if err := os.Remove(envrcPath); err != nil {
+		t.Fatalf("remove injected symlink: %v", err)
+	}
+	if err := os.WriteFile(envrcPath, []byte("user-owned"), 0644); err != nil {
+		t.Fatalf("write replacement .envrc: %v", err)
+	}
+
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	foundSkip := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".envrc" && r.Action == "skipped" {
+			foundSkip = true
+		}
+	}
+	if !foundSkip {
+		t.Fatal("expected .envrc replacement to be skipped")
+	}
+
+	content, err := os.ReadFile(envrcPath)
+	if err != nil {
+		t.Fatal("replacement .envrc should still exist")
+	}
+	if string(content) != "user-owned" {
+		t.Fatalf("replacement .envrc content = %q, want user-owned", content)
+	}
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+	if manifest.Has(".envrc") {
+		t.Fatal("manifest should stop tracking a replaced managed symlink file")
+	}
+}
+
+func TestEjectDoesNotDeleteUserReplacementOfManagedDirectoryEntry(t *testing.T) {
+	_, targetDir, cfg := setupTestEnv(t)
+
+	if _, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink}); err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	skillPath := filepath.Join(targetDir, ".claude", "skills", "test.md")
+	if err := os.Remove(skillPath); err != nil {
+		t.Fatalf("remove injected skill symlink: %v", err)
+	}
+	if err := os.WriteFile(skillPath, []byte("local skill"), 0644); err != nil {
+		t.Fatalf("write replacement skill: %v", err)
+	}
+
+	results, err := Eject(cfg, targetDir)
+	if err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	foundSkip := false
+	for _, r := range results {
+		if r.Item.TargetPath == ".claude/skills/test.md" && r.Action == "skipped" {
+			foundSkip = true
+		}
+	}
+	if !foundSkip {
+		t.Fatal("expected replaced managed directory entry to be skipped")
+	}
+
+	content, err := os.ReadFile(skillPath)
+	if err != nil {
+		t.Fatal("replacement skill should still exist")
+	}
+	if string(content) != "local skill" {
+		t.Fatalf("replacement skill content = %q, want local skill", content)
+	}
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+	if manifest.Has(".claude/skills/test.md") {
+		t.Fatal("manifest should stop tracking a replaced managed directory entry")
+	}
+}
+
 func TestEjectDoesNotDeleteUserFilesInManagedDirectory(t *testing.T) {
 	// If a user creates a file inside a managed directory (e.g. .claude/skills/my-skill.md),
 	// and repomni did not inject that file, eject must not delete it.
@@ -1513,6 +1651,53 @@ func TestEjectDoesNotDeleteUserFilesInManagedDirectory(t *testing.T) {
 	}
 	if string(content) != "user skill" {
 		t.Error("user's custom skill content was modified")
+	}
+}
+
+func TestEjectCleansManifestAndExcludeAfterManualDirectoryDeletion(t *testing.T) {
+	sourceDir, targetDir, _ := setupTestEnv(t)
+
+	cfg := &config.Config{
+		Version:   1,
+		SourceDir: sourceDir,
+		Mode:      config.ModeSymlink,
+		Items: []config.Item{
+			{Type: config.ItemTypeDirectory, SourcePath: "skills", TargetPath: ".claude/skills", Enabled: true},
+		},
+	}
+
+	if _, err := Inject(cfg, targetDir, Options{Mode: config.ModeSymlink}); err != nil {
+		t.Fatalf("Inject failed: %v", err)
+	}
+
+	gitDir, _ := gitutil.FindGitDir(targetDir)
+	manifest := LoadManifest(gitDir)
+	if len(manifest.EntriesUnder(".claude/skills")) == 0 {
+		t.Fatal("expected manifest entries under .claude/skills after inject")
+	}
+
+	// Simulate user manually deleting the target directory
+	if err := os.RemoveAll(filepath.Join(targetDir, ".claude", "skills")); err != nil {
+		t.Fatalf("RemoveAll failed: %v", err)
+	}
+
+	if _, err := Eject(cfg, targetDir); err != nil {
+		t.Fatalf("Eject failed: %v", err)
+	}
+
+	manifest = LoadManifest(gitDir)
+	if remaining := manifest.EntriesUnder(".claude/skills"); len(remaining) > 0 {
+		t.Fatalf("manifest still has %d stale entries under .claude/skills", len(remaining))
+	}
+	if len(manifest.Entries) > 0 {
+		t.Fatalf("manifest should be empty, has %d entries", len(manifest.Entries))
+	}
+
+	excluded := GetExcludedPaths(gitDir)
+	for _, p := range excluded {
+		if strings.HasPrefix(p, ".claude/skills") {
+			t.Fatalf("exclude still contains stale path %q", p)
+		}
 	}
 }
 
@@ -1836,6 +2021,7 @@ func TestValidateTargetPath(t *testing.T) {
 	}{
 		{"normal relative path", ".claude/skills", false},
 		{"simple file", ".env", false},
+		{"dotdot-prefixed name stays inside repo", "..config/local", false},
 		{"traversal with dotdot", "../etc/passwd", true},
 		{"deep traversal", "../../.ssh/id_rsa", true},
 		{"hidden traversal via clean", "foo/../../..", true},

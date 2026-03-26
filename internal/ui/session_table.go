@@ -2,6 +2,7 @@ package ui
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -25,7 +26,8 @@ func PrintSessionsList(sessions []session.SessionMeta) {
 	}
 
 	fmt.Println()
-	for i, s := range sessions {
+	for i := range sessions {
+		s := &sessions[i]
 		fmt.Printf("  %s  %s\n", labelStyle.Render("ID:      "), idStyle.Render(s.SessionID))
 		fmt.Printf("  %s  %s\n", labelStyle.Render("CLI:     "), s.CLI)
 		fmt.Printf("  %s  %s\n", labelStyle.Render("Message: "), s.FirstMessage)
@@ -46,8 +48,12 @@ func PrintSessionsList(sessions []session.SessionMeta) {
 }
 
 // PrintSessionMessages renders color-coded messages from a session.
-func PrintSessionMessages(meta session.SessionMeta, messages []session.Message, full bool) {
+func PrintSessionMessages(meta *session.SessionMeta, messages []session.Message, full bool) {
 	fmt.Println()
+	if meta == nil {
+		fmt.Printf("  %s\n\n", dimStyle.Render("No session metadata."))
+		return
+	}
 	fmt.Printf("  %s  %s\n", labelStyle.Render("Session: "), idStyle.Render(meta.SessionID))
 	fmt.Printf("  %s  %s\n", labelStyle.Render("CLI:     "), meta.CLI)
 	fmt.Printf("  %s  %s\n", labelStyle.Render("Project: "), meta.ProjectPath)
@@ -79,8 +85,12 @@ func PrintSessionMessages(meta session.SessionMeta, messages []session.Message, 
 }
 
 // PrintSessionStats renders aggregate statistics.
-func PrintSessionStats(stats session.Stats) {
+func PrintSessionStats(stats *session.Stats) {
 	fmt.Println()
+	if stats == nil {
+		fmt.Printf("  %s\n\n", dimStyle.Render("No session statistics."))
+		return
+	}
 	fmt.Printf("  %s  %d\n", labelStyle.Render("Sessions:"), stats.TotalSessions)
 	fmt.Printf("  %s  %d\n", labelStyle.Render("Messages:"), stats.TotalMessages)
 	fmt.Printf("  %s  %s\n", labelStyle.Render("Duration:"), formatDuration(stats.TotalDurationSecs))
@@ -112,14 +122,15 @@ func PrintSearchResults(results []session.SearchResult, query string) {
 	bold := lipgloss.NewStyle().Bold(true)
 
 	fmt.Println()
-	for _, r := range results {
+	for i := range results {
+		r := &results[i]
 		id := idStyle.Render(truncateStr(r.Meta.SessionID, 8))
-		preview := highlightQuery(truncateStr(r.Meta.FirstMessage, 50), query, bold)
+		preview := highlightQuery(truncateStr(r.Meta.FirstMessage, 50), query, &bold)
 		fmt.Printf("  %s  %s  (%d matches)\n", id, preview, len(r.Matches))
 
 		for _, m := range r.Matches {
 			typeLabel := dimStyle.Render(m.Type)
-			highlighted := highlightQuery(m.Preview, query, bold)
+			highlighted := highlightQuery(m.Preview, query, &bold)
 			fmt.Printf("    [%s] %s\n", typeLabel, highlighted)
 		}
 		fmt.Println()
@@ -128,24 +139,19 @@ func PrintSearchResults(results []session.SearchResult, query string) {
 
 // highlightQuery replaces all case-insensitive occurrences of query in text
 // with the bold-styled version, preserving the original casing.
-func highlightQuery(text, query string, style lipgloss.Style) string {
-	if query == "" {
+func highlightQuery(text, query string, style *lipgloss.Style) string {
+	if query == "" || style == nil {
 		return text
 	}
-	lower := strings.ToLower(text)
-	lowerQ := strings.ToLower(query)
-	var b strings.Builder
-	for i := 0; i < len(lower); {
-		idx := strings.Index(lower[i:], lowerQ)
-		if idx < 0 {
-			b.WriteString(text[i:])
-			break
-		}
-		b.WriteString(text[i : i+idx])
-		b.WriteString(style.Render(text[i+idx : i+idx+len(query)]))
-		i += idx + len(query)
+
+	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(query))
+	if err != nil {
+		return text
 	}
-	return b.String()
+
+	return re.ReplaceAllStringFunc(text, func(match string) string {
+		return style.Render(match)
+	})
 }
 
 func truncateStr(s string, maxLen int) string {

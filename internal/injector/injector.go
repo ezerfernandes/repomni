@@ -19,7 +19,7 @@ func validateTargetPath(baseDir, targetPath string) error {
 	if err != nil {
 		return fmt.Errorf("invalid target path %q: %w", targetPath, err)
 	}
-	if strings.HasPrefix(rel, "..") {
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return fmt.Errorf("target path %q escapes target directory", targetPath)
 	}
 	return nil
@@ -202,7 +202,7 @@ func Inject(cfg *config.Config, targetDir string, opts Options) ([]Result, error
 		excludePaths = append(excludePaths, item.TargetPath)
 
 		// Record in manifest only for paths we can safely attribute to repomni.
-		if shouldRecordManagedPath(result, mode) {
+		if shouldRecordManagedPath(&result, mode) {
 			manifest.Add(ManifestEntry{
 				TargetPath: item.TargetPath,
 				SourcePath: src,
@@ -266,15 +266,48 @@ func Eject(cfg *config.Config, targetDir string) ([]Result, error) {
 			continue
 		}
 
-		// For file items, check manifest first
-		if !manifest.Has(item.TargetPath) {
+		// For file items, check manifest first.
+		me, ok := manifest.Entry(item.TargetPath)
+		if !ok {
 			results = append(results, Result{Item: item, Action: "skipped", Detail: "not managed by repomni"})
 			continue
 		}
 
 		info, err := os.Lstat(dst)
 		if err != nil {
-			results = append(results, Result{Item: item, Action: "skipped", Detail: "not present"})
+			if os.IsNotExist(err) {
+				results = append(results, Result{Item: item, Action: "skipped", Detail: "not present"})
+				manifest.Remove(item.TargetPath)
+			} else {
+				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot stat: %v", err)})
+			}
+			continue
+		}
+
+		if me.Mode == string(config.ModeSymlink) {
+			if info.Mode()&os.ModeSymlink == 0 {
+				results = append(results, Result{Item: item, Action: "skipped", Detail: "path is no longer a repomni symlink"})
+				manifest.Remove(item.TargetPath)
+				continue
+			}
+
+			target, err := os.Readlink(dst)
+			if err != nil {
+				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot read symlink: %v", err)})
+				continue
+			}
+			if target != me.SourcePath {
+				results = append(results, Result{Item: item, Action: "skipped", Detail: "symlink points elsewhere, not ours"})
+				manifest.Remove(item.TargetPath)
+				continue
+			}
+
+			if err := os.Remove(dst); err != nil {
+				results = append(results, Result{Item: item, Action: "error", Detail: fmt.Sprintf("cannot remove symlink: %v", err)})
+			} else {
+				results = append(results, Result{Item: item, Action: "removed", Detail: "symlink removed"})
+				manifest.Remove(item.TargetPath)
+			}
 			continue
 		}
 
@@ -426,20 +459,22 @@ func Status(cfg *config.Config, targetDir string) ([]ItemStatus, error) {
 
 		status.Present = true
 
-		if info.Mode()&os.ModeSymlink != 0 {
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
 			target, err := os.Readlink(dst)
-			if err == nil && target == src {
+			switch {
+			case err == nil && target == src:
 				status.Current = true
 				status.Detail = "symlink ok"
-			} else if err == nil {
+			case err == nil:
 				status.Detail = fmt.Sprintf("symlink points to %s (expected %s)", target, src)
-			} else {
+			default:
 				status.Detail = "cannot read symlink"
 			}
-		} else if filesEqual(src, dst) {
+		case pathsEqual(src, dst):
 			status.Current = true
 			status.Detail = "copy ok"
-		} else {
+		default:
 			status.Detail = "copy out of date"
 		}
 
@@ -570,7 +605,7 @@ func ejectDirByManifest(item config.Item, targetDir string, manifest *Manifest) 
 		return []Result{{Item: item, Action: "skipped", Detail: "not present"}}
 	}
 
-	// Old-style: whole directory is a symlink
+	// Old-style: whole directory is a symlink.
 	if info.Mode()&os.ModeSymlink != 0 {
 		if manifest.Has(item.TargetPath) {
 			if err := os.Remove(dst); err != nil {
@@ -579,6 +614,9 @@ func ejectDirByManifest(item config.Item, targetDir string, manifest *Manifest) 
 			return []Result{{Item: item, Action: "removed", Detail: "directory symlink removed"}}
 		}
 		return []Result{{Item: item, Action: "skipped", Detail: "not managed by repomni"}}
+	}
+	if manifest.Has(item.TargetPath) {
+		return []Result{{Item: item, Action: "skipped", Detail: "path is no longer a repomni symlink"}}
 	}
 
 	// New-style: iterate manifest entries for this directory
@@ -605,8 +643,14 @@ func ejectDirByManifest(item config.Item, targetDir string, manifest *Manifest) 
 			continue
 		}
 
-		if entryInfo.Mode()&os.ModeSymlink != 0 {
-			// Only remove if it points to our recorded source
+		switch {
+		case me.Mode == string(config.ModeSymlink):
+			if entryInfo.Mode()&os.ModeSymlink == 0 {
+				results = append(results, Result{Item: subItem, Action: "skipped", Detail: "path is no longer a repomni symlink"})
+				continue
+			}
+
+			// Only remove if it points to our recorded source.
 			target, _ := os.Readlink(entryDst)
 			if target == me.SourcePath {
 				if err := os.Remove(entryDst); err != nil {
@@ -617,13 +661,13 @@ func ejectDirByManifest(item config.Item, targetDir string, manifest *Manifest) 
 			} else {
 				results = append(results, Result{Item: subItem, Action: "skipped", Detail: "symlink points elsewhere, not ours"})
 			}
-		} else if entryInfo.IsDir() {
+		case entryInfo.IsDir():
 			if err := os.RemoveAll(entryDst); err != nil {
 				results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove directory: %v", err)})
 			} else {
 				results = append(results, Result{Item: subItem, Action: "removed", Detail: "directory removed"})
 			}
-		} else {
+		default:
 			if err := os.Remove(entryDst); err != nil {
 				results = append(results, Result{Item: subItem, Action: "error", Detail: fmt.Sprintf("cannot remove file: %v", err)})
 			} else {
@@ -683,20 +727,22 @@ func statusDir(item config.Item, src, dst string, excludeSet map[string]bool) []
 
 		status.Present = true
 
-		if info.Mode()&os.ModeSymlink != 0 {
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
 			target, err := os.Readlink(entryDst)
-			if err == nil && target == entrySrc {
+			switch {
+			case err == nil && target == entrySrc:
 				status.Current = true
 				status.Detail = "symlink ok"
-			} else if err == nil {
+			case err == nil:
 				status.Detail = fmt.Sprintf("symlink points to %s (expected %s)", target, entrySrc)
-			} else {
+			default:
 				status.Detail = "cannot read symlink"
 			}
-		} else if filesEqual(entrySrc, entryDst) {
+		case pathsEqual(entrySrc, entryDst):
 			status.Current = true
 			status.Detail = "copy ok"
-		} else {
+		default:
 			status.Detail = "copy out of date"
 		}
 
@@ -807,6 +853,54 @@ func copyDirRecursive(src, dst string) error {
 	})
 }
 
+func pathsEqual(a, b string) bool {
+	infoA, errA := os.Stat(a)
+	infoB, errB := os.Stat(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	if infoA.IsDir() != infoB.IsDir() {
+		return false
+	}
+	if infoA.IsDir() {
+		return dirsEqual(a, b)
+	}
+	return filesEqual(a, b)
+}
+
+func dirsEqual(a, b string) bool {
+	entriesA, errA := os.ReadDir(a)
+	entriesB, errB := os.ReadDir(b)
+	if errA != nil || errB != nil {
+		return false
+	}
+	if len(entriesA) != len(entriesB) {
+		return false
+	}
+
+	entriesBByName := make(map[string]fs.DirEntry, len(entriesB))
+	for _, entry := range entriesB {
+		entriesBByName[entry.Name()] = entry
+	}
+
+	for _, entryA := range entriesA {
+		entryB, ok := entriesBByName[entryA.Name()]
+		if !ok {
+			return false
+		}
+		pathA := filepath.Join(a, entryA.Name())
+		pathB := filepath.Join(b, entryA.Name())
+		if !pathsEqual(pathA, pathB) {
+			return false
+		}
+		if entryA.IsDir() != entryB.IsDir() {
+			return false
+		}
+	}
+
+	return true
+}
+
 func filesEqual(a, b string) bool {
 	dataA, errA := os.ReadFile(a)
 	dataB, errB := os.ReadFile(b)
@@ -826,7 +920,7 @@ func removeIfEmptyDir(dir string) {
 	}
 }
 
-func shouldRecordManagedPath(result Result, mode config.InjectionMode) bool {
+func shouldRecordManagedPath(result *Result, mode config.InjectionMode) bool {
 	if result.Action == "created" {
 		return true
 	}
@@ -841,8 +935,11 @@ func reconcileManifest(results []Result, manifest *Manifest) {
 		switch {
 		case result.Action == "removed":
 			manifest.Remove(result.Item.TargetPath)
-		case result.Action == "skipped" && result.Detail == "not present":
+		case result.Action == "skipped" && (result.Detail == "not present" ||
+			result.Detail == "path is no longer a repomni symlink" ||
+			result.Detail == "symlink points elsewhere, not ours"):
 			manifest.Remove(result.Item.TargetPath)
+			manifest.RemoveUnder(result.Item.TargetPath)
 		}
 	}
 }

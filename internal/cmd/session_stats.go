@@ -42,6 +42,6 @@ func runSessionStats(cmd *cobra.Command, args []string) error {
 		return enc.Encode(stats)
 	}
 
-	ui.PrintSessionStats(stats)
+	ui.PrintSessionStats(&stats)
 	return nil
 }

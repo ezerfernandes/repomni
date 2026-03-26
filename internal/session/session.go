@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -280,18 +281,17 @@ func Search(projectPath, query, mode string, limit int) ([]SearchResult, error) 
 		return nil, err
 	}
 
-	queryLower := strings.ToLower(query)
 	var results []SearchResult
 
-	for _, meta := range sessions {
+	for i := range sessions {
 		if limit > 0 && len(results) >= limit {
 			break
 		}
-
-		matches := searchSession(meta.FilePath, queryLower, mode)
+		meta := &sessions[i]
+		matches := searchSession(meta.FilePath, query, mode)
 		if len(matches) > 0 {
 			results = append(results, SearchResult{
-				Meta:    meta,
+				Meta:    *meta,
 				Matches: matches,
 			})
 		}
@@ -300,7 +300,7 @@ func Search(projectPath, query, mode string, limit int) ([]SearchResult, error) 
 	return results, nil
 }
 
-func searchSession(filePath, queryLower, mode string) []Match {
+func searchSession(filePath, query, mode string) []Match {
 	lines, err := readLines(filePath)
 	if err != nil {
 		return nil
@@ -356,9 +356,8 @@ func searchSession(filePath, queryLower, mode string) []Match {
 		}
 
 		if shouldSearch {
-			contentLower := strings.ToLower(content)
-			if idx := strings.Index(contentLower, queryLower); idx >= 0 {
-				preview := extractPreview(content, idx, len(queryLower))
+			if idx, matchLen, ok := findCaseInsensitive(content, query); ok {
+				preview := extractPreview(content, idx, matchLen)
 				matches = append(matches, Match{
 					Type:    typ,
 					Preview: preview,
@@ -390,10 +389,27 @@ func extractPreview(content string, matchIdx, matchLen int) string {
 		preview = "..." + preview
 	}
 	if end < len(content) {
-		preview = preview + "..."
+		preview += "..."
 	}
 
 	return strings.ReplaceAll(preview, "\n", " ")
+}
+
+func findCaseInsensitive(content, query string) (int, int, bool) {
+	if query == "" {
+		return 0, 0, true
+	}
+
+	re, err := regexp.Compile("(?i)" + regexp.QuoteMeta(query))
+	if err != nil {
+		return 0, 0, false
+	}
+
+	loc := re.FindStringIndex(content)
+	if loc == nil {
+		return 0, 0, false
+	}
+	return loc[0], loc[1] - loc[0], true
 }
 
 func readLines(filePath string) ([][]byte, error) {
@@ -424,6 +440,10 @@ func splitLines(data []byte) [][]byte {
 		lines = append(lines, data[start:])
 	}
 	return lines
+}
+
+func isAmbiguousSessionError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "is ambiguous")
 }
 
 // DiscoverAll finds sessions from both Claude Code and Codex for the given
@@ -461,23 +481,37 @@ func DiscoverAll(projectPath, cliFilter string, limit int) ([]SessionMeta, error
 // FindSessionAll searches both Claude Code and Codex sessions for a match.
 func FindSessionAll(projectPath, sessionID, cliFilter string) (*SessionMeta, error) {
 	var results []*SessionMeta
+	var ambiguityErr error
 
 	if cliFilter == "" || cliFilter == "claude" {
 		meta, err := FindSession(projectPath, sessionID)
-		if err == nil {
+		switch {
+		case err == nil:
 			results = append(results, meta)
+		case cliFilter == "claude":
+			return nil, err
+		case isAmbiguousSessionError(err):
+			ambiguityErr = err
 		}
 	}
 
 	if cliFilter == "" || cliFilter == "codex" {
 		meta, err := FindCodexSession(projectPath, sessionID)
-		if err == nil {
+		switch {
+		case err == nil:
 			results = append(results, meta)
+		case cliFilter == "codex":
+			return nil, err
+		case isAmbiguousSessionError(err):
+			ambiguityErr = err
 		}
 	}
 
 	switch len(results) {
 	case 0:
+		if ambiguityErr != nil {
+			return nil, ambiguityErr
+		}
 		return nil, fmt.Errorf("session %q not found; use 'session list' to see available sessions", sessionID)
 	case 1:
 		return results[0], nil
@@ -488,6 +522,9 @@ func FindSessionAll(projectPath, sessionID, cliFilter string) (*SessionMeta, err
 
 // ReadMessagesForSession reads messages using the correct parser based on CLI type.
 func ReadMessagesForSession(meta *SessionMeta, offset, limit int, full bool) ([]Message, error) {
+	if meta == nil {
+		return nil, fmt.Errorf("session metadata is nil")
+	}
 	if meta.CLI == "codex" {
 		return ReadCodexMessages(meta.FilePath, offset, limit, full)
 	}
@@ -500,14 +537,22 @@ func SearchAll(projectPath, query, mode, cliFilter string, limit int) ([]SearchR
 
 	if cliFilter == "" || cliFilter == "claude" {
 		results, err := Search(projectPath, query, mode, 0)
-		if err == nil {
+		if err != nil {
+			if cliFilter == "claude" {
+				return nil, err
+			}
+		} else {
 			all = append(all, results...)
 		}
 	}
 
 	if cliFilter == "" || cliFilter == "codex" {
 		results, err := SearchCodex(projectPath, query, mode, 0)
-		if err == nil {
+		if err != nil {
+			if cliFilter == "codex" {
+				return nil, err
+			}
+		} else {
 			all = append(all, results...)
 		}
 	}
