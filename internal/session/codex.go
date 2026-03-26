@@ -260,8 +260,8 @@ func FindCodexSession(projectPath, sessionID string) (*SessionMeta, error) {
 		return &matches[0], nil
 	default:
 		ids := make([]string, len(matches))
-		for i, m := range matches {
-			ids[i] = m.SessionID
+		for i := range matches {
+			ids[i] = matches[i].SessionID
 		}
 		return nil, fmt.Errorf("session ID %q is ambiguous; matches: %s", sessionID, strings.Join(ids, ", "))
 	}
@@ -488,18 +488,17 @@ func SearchCodex(projectPath, query, mode string, limit int) ([]SearchResult, er
 		return nil, err
 	}
 
-	queryLower := strings.ToLower(query)
 	var results []SearchResult
 
-	for _, meta := range sessions {
+	for i := range sessions {
 		if limit > 0 && len(results) >= limit {
 			break
 		}
-
-		matches := searchCodexSession(meta.FilePath, queryLower, mode)
+		meta := &sessions[i]
+		matches := searchCodexSession(meta.FilePath, query, mode)
 		if len(matches) > 0 {
 			results = append(results, SearchResult{
-				Meta:    meta,
+				Meta:    *meta,
 				Matches: matches,
 			})
 		}
@@ -508,7 +507,7 @@ func SearchCodex(projectPath, query, mode string, limit int) ([]SearchResult, er
 	return results, nil
 }
 
-func searchCodexSession(filePath, queryLower, mode string) []Match {
+func searchCodexSession(filePath, query, mode string) []Match {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil
@@ -548,9 +547,8 @@ func searchCodexSession(filePath, queryLower, mode string) []Match {
 		}
 
 		if shouldSearch {
-			contentLower := strings.ToLower(m.Text)
-			if idx := strings.Index(contentLower, queryLower); idx >= 0 {
-				preview := extractPreview(m.Text, idx, len(queryLower))
+			if idx, matchLen, ok := findCaseInsensitive(m.Text, query); ok {
+				preview := extractPreview(m.Text, idx, matchLen)
 				matches = append(matches, Match{
 					Type:    m.Role,
 					Preview: preview,

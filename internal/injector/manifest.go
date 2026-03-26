@@ -24,12 +24,18 @@ type Manifest struct {
 
 // Has reports whether the manifest contains an entry for the given target path.
 func (m *Manifest) Has(targetPath string) bool {
+	_, ok := m.Entry(targetPath)
+	return ok
+}
+
+// Entry returns the manifest entry for targetPath, if present.
+func (m *Manifest) Entry(targetPath string) (ManifestEntry, bool) {
 	for _, e := range m.Entries {
 		if e.TargetPath == targetPath {
-			return true
+			return e, true
 		}
 	}
-	return false
+	return ManifestEntry{}, false
 }
 
 // EntriesUnder returns all manifest entries whose TargetPath is a direct child
@@ -65,6 +71,19 @@ func (m *Manifest) Remove(targetPath string) {
 	filtered := m.Entries[:0]
 	for _, e := range m.Entries {
 		if e.TargetPath != targetPath {
+			filtered = append(filtered, e)
+		}
+	}
+	m.Entries = filtered
+}
+
+// RemoveUnder deletes all entries whose TargetPath falls under dirPrefix
+// (i.e. starts with dirPrefix + "/").
+func (m *Manifest) RemoveUnder(dirPrefix string) {
+	prefix := dirPrefix + "/"
+	filtered := m.Entries[:0]
+	for _, e := range m.Entries {
+		if !strings.HasPrefix(e.TargetPath, prefix) {
 			filtered = append(filtered, e)
 		}
 	}

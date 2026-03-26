@@ -51,7 +51,10 @@ func RunForge(platform Platform, args ...string) (string, error) {
 }
 
 // RunForgeDir executes a gh or glab command in the given directory and returns trimmed stdout.
-func RunForgeDir(dir string, platform Platform, args ...string) (string, error) {
+// It is a variable so tests can replace it with a fake.
+var RunForgeDir = runForgeDirImpl
+
+func runForgeDirImpl(dir string, platform Platform, args ...string) (string, error) {
 	name := cliName(platform)
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
@@ -66,7 +69,10 @@ func RunForgeDir(dir string, platform Platform, args ...string) (string, error) 
 
 // RunForgePassthrough executes a gh or glab command with stdio attached to the terminal.
 // Used for interactive commands like "checks --watch".
-func RunForgePassthrough(dir string, platform Platform, args ...string) error {
+// It is a variable so tests can replace it with a fake.
+var RunForgePassthrough = runForgePassthroughImpl
+
+func runForgePassthroughImpl(dir string, platform Platform, args ...string) error {
 	name := cliName(platform)
 	cmd := exec.Command(name, args...)
 	cmd.Dir = dir
@@ -77,7 +83,10 @@ func RunForgePassthrough(dir string, platform Platform, args ...string) error {
 }
 
 // CheckCLI verifies that the CLI for the given platform is available in PATH.
-func CheckCLI(platform Platform) error {
+// It is a variable so tests can replace it with a fake.
+var CheckCLI = checkCLIImpl
+
+func checkCLIImpl(platform Platform) error {
 	name := cliName(platform)
 	_, err := exec.LookPath(name)
 	if err != nil {

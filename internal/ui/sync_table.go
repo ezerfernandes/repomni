@@ -15,7 +15,8 @@ func PrintSyncResults(results []syncer.SyncResult, summary syncer.SyncSummary) {
 	repoW := len("Repository")
 	branchW := len("Branch")
 	actionW := len("Action")
-	for _, r := range results {
+	for i := range results {
+		r := &results[i]
 		if w := len(syncActionIcon(r.Action)) + 1 + len(r.Name); w > repoW {
 			repoW = w
 		}
@@ -37,7 +38,8 @@ func PrintSyncResults(results []syncer.SyncResult, summary syncer.SyncSummary) {
 		strings.Repeat("─", 6))
 
 	rowFmt := fmt.Sprintf("  %%s %%-%ds  %%-%ds  %%-%ds  %%s\n", repoW-5, branchW, actionW)
-	for _, r := range results {
+	for i := range results {
+		r := &results[i]
 		icon := syncActionIcon(r.Action)
 		fmt.Printf(rowFmt, icon, r.Name, r.Branch, r.Action, r.PostDetail)
 	}
@@ -57,7 +59,8 @@ func PrintGitStatusTable(statuses []syncer.RepoStatus) {
 		"\u2500\u2500\u2500\u2500\u2500\u2500",
 		"\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500")
 
-	for _, s := range statuses {
+	for i := range statuses {
+		s := &statuses[i]
 		dirty := "No"
 		if s.Dirty {
 			dirty = "Yes"

@@ -87,6 +87,9 @@ test_coverage_report: test_coverage
 	@echo "=== Per-function coverage ==="
 	@go tool cover -func=coverage.out
 
+check_critic:
+	@go-critic check -enableAll -disable='#experimental,#opinionated' ./...
+
 # Unified checks
 check_all:
 	@echo "=== Running all checks ==="

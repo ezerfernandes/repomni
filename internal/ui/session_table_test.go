@@ -23,11 +23,18 @@ func TestHighlightQuery(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := highlightQuery(tt.text, tt.query, bold)
+			got := highlightQuery(tt.text, tt.query, &bold)
 			if got != tt.want {
 				t.Errorf("highlightQuery(%q, %q) = %q, want %q", tt.text, tt.query, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestHighlightQuery_NilStyle(t *testing.T) {
+	got := highlightQuery("Hello World", "hello", nil)
+	if got != "Hello World" {
+		t.Errorf("highlightQuery with nil style = %q, want original text", got)
 	}
 }
 

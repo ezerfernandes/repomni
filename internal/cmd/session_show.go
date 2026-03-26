@@ -55,6 +55,6 @@ func runSessionShow(cmd *cobra.Command, args []string) error {
 		return enc.Encode(messages)
 	}
 
-	ui.PrintSessionMessages(*meta, messages, sessionShowFull)
+	ui.PrintSessionMessages(meta, messages, sessionShowFull)
 	return nil
 }

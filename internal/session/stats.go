@@ -25,7 +25,8 @@ func Aggregate(sessions []SessionMeta) Stats {
 		NewestSession: sessions[0].CreatedAt,
 	}
 
-	for _, meta := range sessions {
+	for i := range sessions {
+		meta := &sessions[i]
 		s.TotalMessages += meta.MessageCount
 		s.TotalDurationSecs += meta.DurationSecs
 		s.TotalSizeBytes += meta.SizeBytes

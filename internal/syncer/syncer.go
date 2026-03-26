@@ -243,7 +243,8 @@ func SyncAll(repos []string, opts SyncOptions) ([]SyncResult, SyncSummary) {
 
 	var summary SyncSummary
 	summary.Total = len(repos)
-	for _, r := range results {
+	for i := range results {
+		r := &results[i]
 		switch r.Action {
 		case "pulled":
 			summary.Pulled++

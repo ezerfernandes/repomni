@@ -147,7 +147,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 	hasErrors := false
 	var totalFreed int64
-	for _, c := range candidates {
+	for i := range candidates {
+		c := &candidates[i]
 		if c.Skipped {
 			continue
 		}
@@ -183,8 +184,8 @@ func runClean(cmd *cobra.Command, args []string) error {
 
 func countDeletable(candidates []ui.CleanCandidate) int {
 	n := 0
-	for _, c := range candidates {
-		if !c.Skipped {
+	for i := range candidates {
+		if !candidates[i].Skipped {
 			n++
 		}
 	}
@@ -252,7 +253,8 @@ func archiveBranches(parentDir string, candidates []ui.CleanCandidate) error {
 	}
 
 	now := time.Now().Format(time.RFC3339)
-	for _, c := range candidates {
+	for i := range candidates {
+		c := &candidates[i]
 		if c.Skipped {
 			continue
 		}
