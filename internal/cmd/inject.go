@@ -88,20 +88,22 @@ func runInject(cmd *cobra.Command, args []string) error {
 	// For single-target runs, apply per-repo config filtering and show picker.
 	injectCfg := cfg
 	if !injectAll {
-		var allowedEntries map[string]map[string]bool
+		var savedEntries map[string]map[string]bool
 		repoCfg, _ := loadRepoConfig(target)
 		if repoCfg != nil {
 			injectCfg = repoCfg.FilterGlobalConfig(cfg)
-			allowedEntries = repoCfg.ToSelectedEntries()
+			savedEntries = repoCfg.ToSelectedEntries()
 		}
 
 		if injectYes || injectJSON {
-			// Non-interactive: use per-repo saved selections (if any)
-			if allowedEntries != nil {
-				opts.SelectedEntries = allowedEntries
+			// Non-interactive: use per-repo saved selections (if any).
+			if savedEntries != nil {
+				opts.SelectedEntries = savedEntries
 			}
 		} else {
-			selected, err := ui.SelectDirEntries(injectCfg, allowedEntries)
+			// Interactive: show all current source entries, but preselect any
+			// entries saved in the repo config.
+			selected, err := ui.SelectDirEntries(injectCfg, savedEntries)
 			if err != nil {
 				return err
 			}
