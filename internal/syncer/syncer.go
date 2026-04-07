@@ -1,10 +1,8 @@
 package syncer
 
 import (
-	"context"
 	"fmt"
 	"path/filepath"
-	"sync"
 
 	"github.com/ezerfernandes/repomni/internal/gitutil"
 	"golang.org/x/sync/errgroup"
@@ -51,6 +49,7 @@ type SyncOptions struct {
 	AutoStash bool
 	Jobs      int
 	NoFetch   bool
+	NoTags    bool
 	Strategy  string
 }
 
@@ -65,76 +64,84 @@ type SyncSummary struct {
 }
 
 // CheckStatus determines the git sync status of a single repo.
-func CheckStatus(repoDir string, noFetch bool) RepoStatus {
+func CheckStatus(repoDir string, noFetch bool, noTags bool) RepoStatus {
 	status := RepoStatus{
 		Path: repoDir,
 		Name: filepath.Base(repoDir),
 	}
 
-	branch, err := gitutil.CurrentBranch(repoDir)
-	if err != nil {
-		status.State = StateError
-		status.Error = err
-		status.Detail = fmt.Sprintf("cannot determine branch: %v", err)
-		return status
-	}
-	if branch == "" {
-		status.State = StateError
-		status.Detail = "detached HEAD"
-		return status
-	}
-	status.Branch = branch
-
-	if !noFetch {
-		if err := gitutil.Fetch(repoDir); err != nil {
+	if noFetch {
+		// Single git call gets everything: branch, upstream, dirty, ahead/behind.
+		info, err := gitutil.GetRepoInfo(repoDir)
+		if err != nil {
+			status.State = StateError
+			status.Error = err
+			status.Detail = fmt.Sprintf("cannot determine status: %v", err)
+			return status
+		}
+		if info.Branch == "" {
+			status.State = StateError
+			status.Detail = "detached HEAD"
+			return status
+		}
+		status.Branch = info.Branch
+		if info.Upstream == "" {
+			status.State = StateNoUpstream
+			status.Detail = "no upstream tracking ref"
+			return status
+		}
+		status.Upstream = info.Upstream
+		status.Dirty = info.Dirty
+		status.Ahead = info.Ahead
+		status.Behind = info.Behind
+	} else {
+		// With fetch: fetch first, then single GetRepoInfo for everything.
+		// This is 2 git processes instead of 3+ in the original code.
+		if err := gitutil.Fetch(repoDir, noTags); err != nil {
 			status.State = StateError
 			status.Error = err
 			status.Detail = fmt.Sprintf("fetch failed: %v", err)
 			return status
 		}
-	}
 
-	upstream, err := gitutil.UpstreamRef(repoDir)
-	if err != nil || upstream == "" {
-		status.State = StateNoUpstream
-		status.Detail = "no upstream tracking ref"
-		return status
+		info, err := gitutil.GetRepoInfo(repoDir)
+		if err != nil {
+			status.State = StateError
+			status.Error = err
+			status.Detail = fmt.Sprintf("cannot determine status: %v", err)
+			return status
+		}
+		if info.Branch == "" {
+			status.State = StateError
+			status.Detail = "detached HEAD"
+			return status
+		}
+		status.Branch = info.Branch
+		if info.Upstream == "" {
+			status.State = StateNoUpstream
+			status.Detail = "no upstream tracking ref"
+			return status
+		}
+		status.Upstream = info.Upstream
+		status.Dirty = info.Dirty
+		status.Ahead = info.Ahead
+		status.Behind = info.Behind
 	}
-	status.Upstream = upstream
-
-	dirty, err := gitutil.IsDirty(repoDir)
-	if err != nil {
-		status.State = StateError
-		status.Error = err
-		status.Detail = fmt.Sprintf("cannot check working tree: %v", err)
-		return status
-	}
-	status.Dirty = dirty
-
-	ahead, behind, err := gitutil.AheadBehind(repoDir)
-	if err != nil {
-		status.State = StateError
-		status.Error = err
-		status.Detail = fmt.Sprintf("cannot determine ahead/behind: %v", err)
-		return status
-	}
-	status.Ahead = ahead
-	status.Behind = behind
 
 	switch {
-	case ahead > 0 && behind > 0:
+	case status.Ahead > 0 && status.Behind > 0:
 		status.State = StateDiverged
-		status.Detail = fmt.Sprintf("%d ahead, %d behind", ahead, behind)
-	case behind > 0 && dirty:
+		status.Detail = fmt.Sprintf("%d ahead, %d behind", status.Ahead, status.Behind)
+	case status.Behind > 0 && status.Dirty:
 		status.State = StateDirty
-		status.Detail = fmt.Sprintf("%d behind, has uncommitted changes", behind)
-	case behind > 0:
+		status.Detail = fmt.Sprintf("%d behind, has uncommitted changes", status.Behind)
+	case status.Behind > 0:
 		status.State = StateBehind
-		status.Detail = fmt.Sprintf("%d behind", behind)
-	case ahead > 0:
+		status.Detail = fmt.Sprintf("%d behind", status.Behind)
+	case status.Ahead > 0:
 		status.State = StateAhead
-		status.Detail = fmt.Sprintf("%d ahead", ahead)
-	case dirty:
+		status.Detail = fmt.Sprintf("%d ahead", status.Ahead)
+	case status.Dirty:
 		status.State = StateDirty
 		status.Detail = "uncommitted changes"
 	default:
@@ -147,7 +154,12 @@ func CheckStatus(repoDir string, noFetch bool) RepoStatus {
 
 // SyncRepo attempts to pull updates for a single repository.
 func SyncRepo(repoDir string, opts SyncOptions) SyncResult {
-	status := CheckStatus(repoDir, opts.NoFetch)
+	strategy := opts.Strategy
+	if strategy == "" {
+		strategy = "ff-only"
+	}
+
+	status := CheckStatus(repoDir, opts.NoFetch, opts.NoTags)
 	result := SyncResult{RepoStatus: status}
 
 	if status.State == StateError || status.State == StateNoUpstream {
@@ -191,12 +203,14 @@ func SyncRepo(repoDir string, opts SyncOptions) SyncResult {
 		return result
 	}
 
-	strategy := opts.Strategy
-	if strategy == "" {
-		strategy = "ff-only"
+	// If we already fetched in CheckStatus, use MergeUpstream to avoid a
+	// redundant fetch. Otherwise fall back to Pull which includes its own fetch.
+	var err error
+	if !opts.NoFetch {
+		_, err = gitutil.MergeUpstream(repoDir, strategy, opts.AutoStash && status.Dirty)
+	} else {
+		_, err = gitutil.Pull(repoDir, strategy, opts.AutoStash && status.Dirty)
 	}
-
-	_, err := gitutil.Pull(repoDir, strategy, opts.AutoStash && status.Dirty)
 	if err != nil {
 		result.Action = "error"
 		result.PostDetail = fmt.Sprintf("pull failed: %v", err)
@@ -220,21 +234,12 @@ func SyncAll(repos []string, opts SyncOptions) ([]SyncResult, SyncSummary) {
 		jobs = 1
 	}
 
-	g, ctx := errgroup.WithContext(context.Background())
+	g := new(errgroup.Group)
 	g.SetLimit(jobs)
 
-	var mu sync.Mutex
 	for i, repo := range repos {
 		g.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-			result := SyncRepo(repo, opts)
-			mu.Lock()
-			results[i] = result
-			mu.Unlock()
+			results[i] = SyncRepo(repo, opts)
 			return nil
 		})
 	}
@@ -267,28 +272,19 @@ func SyncAll(repos []string, opts SyncOptions) ([]SyncResult, SyncSummary) {
 }
 
 // StatusAll checks status for multiple repos (no pull), optionally in parallel.
-func StatusAll(repos []string, noFetch bool, jobs int) []RepoStatus {
+func StatusAll(repos []string, noFetch bool, noTags bool, jobs int) []RepoStatus {
 	statuses := make([]RepoStatus, len(repos))
 
 	if jobs <= 0 {
 		jobs = 1
 	}
 
-	g, ctx := errgroup.WithContext(context.Background())
+	g := new(errgroup.Group)
 	g.SetLimit(jobs)
 
-	var mu sync.Mutex
 	for i, repo := range repos {
 		g.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
-			s := CheckStatus(repo, noFetch)
-			mu.Lock()
-			statuses[i] = s
-			mu.Unlock()
+			statuses[i] = CheckStatus(repo, noFetch, noTags)
 			return nil
 		})
 	}

@@ -203,7 +203,7 @@ func syncMainRepo(mainDir string, quiet bool) {
 	if !quiet {
 		fmt.Fprintf(os.Stderr, "Syncing main repo...\n")
 	}
-	if err := gitutil.Fetch(mainDir); err != nil {
+	if err := gitutil.Fetch(mainDir, false); err != nil {
 		if !quiet {
 			fmt.Fprintf(os.Stderr, "Warning: fetch failed: %v\n", err)
 		}

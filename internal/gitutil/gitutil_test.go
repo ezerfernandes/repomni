@@ -385,7 +385,7 @@ func TestAheadBehindNoUpstream(t *testing.T) {
 func TestFetch(t *testing.T) {
 	_, cloneDir := initBareCloneEnv(t)
 
-	err := Fetch(cloneDir)
+	err := Fetch(cloneDir, false)
 	if err != nil {
 		t.Fatalf("Fetch failed: %v", err)
 	}
@@ -398,7 +398,7 @@ func TestFetchNoRemote(t *testing.T) {
 	run(t, repo, "git", "add", ".")
 	run(t, repo, "git", "commit", "-m", "init")
 
-	err := Fetch(repo)
+	err := Fetch(repo, false)
 	if err != nil {
 		// git fetch on a repo with no remotes exits 0 but produces no output
 		t.Fatalf("Fetch on repo without remote failed unexpectedly: %v", err)

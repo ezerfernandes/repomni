@@ -32,6 +32,7 @@ var (
 	syncAllAutoStash bool
 	syncAllJobs      int
 	syncAllNoFetch   bool
+	syncAllNoTags    bool
 	syncAllStrategy  string
 	syncAllJSON      bool
 )
@@ -44,6 +45,7 @@ func init() {
 	syncAllCmd.Flags().BoolVar(&syncAllAutoStash, "autostash", false, "stash dirty working trees before pull")
 	syncAllCmd.Flags().IntVarP(&syncAllJobs, "jobs", "j", 1, "number of parallel sync workers")
 	syncAllCmd.Flags().BoolVar(&syncAllNoFetch, "no-fetch", false, "skip git fetch (local status only)")
+	syncAllCmd.Flags().BoolVar(&syncAllNoTags, "no-tags", false, "do not fetch tags")
 	syncAllCmd.Flags().StringVar(&syncAllStrategy, "strategy", "ff-only", "pull strategy: ff-only, rebase, merge")
 	syncAllCmd.Flags().BoolVar(&syncAllJSON, "json", false, "output as JSON")
 }
@@ -54,6 +56,7 @@ func runSyncAll(cmd *cobra.Command, args []string) error {
 	syncCodeAutoStash = syncAllAutoStash
 	syncCodeJobs = syncAllJobs
 	syncCodeNoFetch = syncAllNoFetch
+	syncCodeNoTags = syncAllNoTags
 	syncCodeStrategy = syncAllStrategy
 	syncCodeJSON = syncAllJSON
 

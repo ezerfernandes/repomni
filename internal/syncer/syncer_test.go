@@ -60,7 +60,7 @@ func writeFile(t *testing.T, path, content string) {
 func TestCheckStatusCurrent(t *testing.T) {
 	_, cloneDir := initBareCloneEnv(t)
 
-	s := CheckStatus(cloneDir, true)
+	s := CheckStatus(cloneDir, true, false)
 	if s.State != StateCurrent {
 		t.Errorf("expected current, got %s: %s", s.State, s.Detail)
 	}
@@ -74,7 +74,7 @@ func TestCheckStatusBehind(t *testing.T) {
 	pushCommitFromSecondClone(t, bareDir)
 
 	// Use noFetch=false so it fetches the new commit
-	s := CheckStatus(cloneDir, false)
+	s := CheckStatus(cloneDir, false, false)
 	if s.State != StateBehind {
 		t.Errorf("expected behind, got %s: %s", s.State, s.Detail)
 	}
@@ -87,7 +87,7 @@ func TestCheckStatusDirty(t *testing.T) {
 	_, cloneDir := initBareCloneEnv(t)
 	writeFile(t, filepath.Join(cloneDir, "dirty.txt"), "uncommitted")
 
-	s := CheckStatus(cloneDir, true)
+	s := CheckStatus(cloneDir, true, false)
 	if s.State != StateDirty {
 		t.Errorf("expected dirty, got %s: %s", s.State, s.Detail)
 	}
@@ -110,7 +110,7 @@ func TestCheckStatusDiverged(t *testing.T) {
 	// Fetch to see the divergence
 	run(t, cloneDir, "git", "fetch")
 
-	s := CheckStatus(cloneDir, true) // noFetch since we already fetched
+	s := CheckStatus(cloneDir, true, false) // noFetch since we already fetched
 	if s.State != StateDiverged {
 		t.Errorf("expected diverged, got %s: %s", s.State, s.Detail)
 	}
@@ -126,7 +126,7 @@ func TestCheckStatusNoUpstream(t *testing.T) {
 	run(t, repo, "git", "add", ".")
 	run(t, repo, "git", "commit", "-m", "init")
 
-	s := CheckStatus(repo, true)
+	s := CheckStatus(repo, true, false)
 	if s.State != StateNoUpstream {
 		t.Errorf("expected no-upstream, got %s: %s", s.State, s.Detail)
 	}
@@ -140,7 +140,7 @@ func TestCheckStatusAhead(t *testing.T) {
 	run(t, cloneDir, "git", "add", ".")
 	run(t, cloneDir, "git", "commit", "-m", "local commit")
 
-	s := CheckStatus(cloneDir, true)
+	s := CheckStatus(cloneDir, true, false)
 	if s.State != StateAhead {
 		t.Errorf("expected ahead, got %s: %s", s.State, s.Detail)
 	}
@@ -261,7 +261,7 @@ func TestCheckStatusDetachedHead(t *testing.T) {
 	_, cloneDir := initBareCloneEnv(t)
 	run(t, cloneDir, "git", "checkout", "--detach", "HEAD")
 
-	s := CheckStatus(cloneDir, true)
+	s := CheckStatus(cloneDir, true, false)
 	if s.State != StateError {
 		t.Errorf("expected error state for detached HEAD, got %s: %s", s.State, s.Detail)
 	}
@@ -269,7 +269,7 @@ func TestCheckStatusDetachedHead(t *testing.T) {
 
 func TestCheckStatusNotGitRepo(t *testing.T) {
 	dir := t.TempDir()
-	s := CheckStatus(dir, true)
+	s := CheckStatus(dir, true, false)
 	if s.State != StateError {
 		t.Errorf("expected error state for non-git dir, got %s: %s", s.State, s.Detail)
 	}
@@ -278,7 +278,7 @@ func TestCheckStatusNotGitRepo(t *testing.T) {
 func TestCheckStatusFields(t *testing.T) {
 	_, cloneDir := initBareCloneEnv(t)
 
-	s := CheckStatus(cloneDir, true)
+	s := CheckStatus(cloneDir, true, false)
 	if s.Path != cloneDir {
 		t.Errorf("expected path=%q, got %q", cloneDir, s.Path)
 	}
@@ -299,7 +299,7 @@ func TestCheckStatusDirtyAndBehind(t *testing.T) {
 	run(t, cloneDir, "git", "fetch")
 	writeFile(t, filepath.Join(cloneDir, "dirty.txt"), "uncommitted")
 
-	s := CheckStatus(cloneDir, true)
+	s := CheckStatus(cloneDir, true, false)
 	if s.State != StateDirty {
 		t.Errorf("expected dirty (behind + dirty), got %s: %s", s.State, s.Detail)
 	}
@@ -426,7 +426,7 @@ func TestSyncAllSummary(t *testing.T) {
 }
 
 func TestStatusAllEmpty(t *testing.T) {
-	statuses := StatusAll(nil, true, 1)
+	statuses := StatusAll(nil, true, false, 1)
 	if len(statuses) != 0 {
 		t.Errorf("expected 0 statuses, got %d", len(statuses))
 	}
@@ -435,7 +435,7 @@ func TestStatusAllEmpty(t *testing.T) {
 func TestStatusAllDefaultJobs(t *testing.T) {
 	_, cloneDir := initBareCloneEnv(t)
 
-	statuses := StatusAll([]string{cloneDir}, true, 0)
+	statuses := StatusAll([]string{cloneDir}, true, false, 0)
 	if len(statuses) != 1 {
 		t.Fatalf("expected 1 status, got %d", len(statuses))
 	}
@@ -462,7 +462,7 @@ func TestStatusAll(t *testing.T) {
 		repos = append(repos, cloneDir)
 	}
 
-	statuses := StatusAll(repos, true, 1)
+	statuses := StatusAll(repos, true, false, 1)
 	if len(statuses) != 2 {
 		t.Fatalf("expected 2 statuses, got %d", len(statuses))
 	}

@@ -82,8 +82,8 @@ func documentedFlags() map[string][]string {
 		"branch review":          {"approve", "comment", "json"},
 		"branch merge":           {"squash", "rebase", "delete-branch", "json"},
 		"branch clean":           {"dry-run", "json", "force", "state"},
-		"sync":                   {"dry-run", "autostash", "jobs", "no-fetch", "strategy", "json"},
-		"sync code":              {"dry-run", "autostash", "jobs", "no-fetch", "strategy", "json"},
+		"sync":                   {"dry-run", "autostash", "jobs", "no-fetch", "no-tags", "strategy", "json"},
+		"sync code":              {"dry-run", "autostash", "jobs", "no-fetch", "no-tags", "strategy", "json"},
 		"sync state":             {"dry-run", "json"},
 		"config global":          {"source", "non-interactive", "json"},
 		"session list":           {"json", "limit"},
@@ -393,7 +393,8 @@ func TestContractFlagTypes(t *testing.T) {
 		"eject":         {"all"},
 		"status":        {"all", "json", "git", "no-fetch"},
 		"branch submit": {"fill", "draft"},
-		"sync code":     {"dry-run", "autostash", "no-fetch", "json"},
+		"sync":          {"dry-run", "autostash", "no-fetch", "no-tags", "json"},
+		"sync code":     {"dry-run", "autostash", "no-fetch", "no-tags", "json"},
 		"sync state":    {"dry-run", "json"},
 	}
 
@@ -414,6 +415,7 @@ func TestContractFlagTypes(t *testing.T) {
 	}
 
 	stringFlags := map[string][]string{
+		"sync":          {"strategy"},
 		"sync code":     {"strategy"},
 		"branch submit": {"base", "title", "body"},
 	}
@@ -435,6 +437,7 @@ func TestContractFlagTypes(t *testing.T) {
 	}
 
 	intFlags := map[string][]string{
+		"sync":      {"jobs"},
 		"sync code": {"jobs"},
 	}
 

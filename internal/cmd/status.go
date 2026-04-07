@@ -89,7 +89,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func runGitStatus(targets []string) error {
-	statuses := syncer.StatusAll(targets, statusNoFetch, 1)
+	statuses := syncer.StatusAll(targets, statusNoFetch, false, 1)
 
 	if statusJSON {
 		return ui.PrintGitStatusJSON(statuses)

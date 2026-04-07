@@ -15,7 +15,7 @@ func TestCheckStatusFetchFails(t *testing.T) {
 	run(t, repo, "git", "add", ".")
 	run(t, repo, "git", "commit", "-m", "init")
 
-	s := CheckStatus(repo, false) // noFetch=false triggers fetch
+	s := CheckStatus(repo, false, false) // noFetch=false triggers fetch
 	if s.State != StateError {
 		// Fetch on a repo with no remote might fail or be a no-op depending
 		// on git version. If it doesn't error, it should be no-upstream.
@@ -191,7 +191,7 @@ func TestStatusAllParallel(t *testing.T) {
 		repos = append(repos, cloneDir)
 	}
 
-	statuses := StatusAll(repos, true, 4)
+	statuses := StatusAll(repos, true, false, 4)
 	if len(statuses) != 4 {
 		t.Fatalf("expected 4 statuses, got %d", len(statuses))
 	}

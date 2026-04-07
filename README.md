@@ -460,6 +460,7 @@ repomni sync --json
 | `--autostash` | Stash dirty working trees before pull |
 | `-j`, `--jobs` | Number of parallel sync workers (default: 1) |
 | `--no-fetch` | Skip `git fetch` (local status only) |
+| `--no-tags` | Do not fetch tags |
 | `--strategy` | Pull strategy: `ff-only` (default), `rebase`, `merge` |
 | `--json` | Output as JSON |
 
@@ -482,6 +483,7 @@ repomni sync code --json
 | `--autostash` | Stash dirty working trees before pull |
 | `-j`, `--jobs` | Number of parallel sync workers (default: 1) |
 | `--no-fetch` | Skip `git fetch` (local status only) |
+| `--no-tags` | Do not fetch tags |
 | `--strategy` | Pull strategy: `ff-only` (default), `rebase`, `merge` |
 | `--json` | Output as JSON |
 

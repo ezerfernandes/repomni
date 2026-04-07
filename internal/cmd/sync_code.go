@@ -31,6 +31,7 @@ var (
 	syncCodeAutoStash bool
 	syncCodeJobs      int
 	syncCodeNoFetch   bool
+	syncCodeNoTags    bool
 	syncCodeStrategy  string
 	syncCodeJSON      bool
 )
@@ -40,6 +41,7 @@ func init() {
 	syncCodeCmd.Flags().BoolVar(&syncCodeAutoStash, "autostash", false, "stash dirty working trees before pull")
 	syncCodeCmd.Flags().IntVarP(&syncCodeJobs, "jobs", "j", 1, "number of parallel sync workers")
 	syncCodeCmd.Flags().BoolVar(&syncCodeNoFetch, "no-fetch", false, "skip git fetch (local status only)")
+	syncCodeCmd.Flags().BoolVar(&syncCodeNoTags, "no-tags", false, "do not fetch tags")
 	syncCodeCmd.Flags().StringVar(&syncCodeStrategy, "strategy", "ff-only", "pull strategy: ff-only, rebase, merge")
 	syncCodeCmd.Flags().BoolVar(&syncCodeJSON, "json", false, "output as JSON")
 }
@@ -69,6 +71,7 @@ func gatherSyncCode(args []string) ([]syncer.SyncResult, syncer.SyncSummary, err
 		AutoStash: syncCodeAutoStash,
 		Jobs:      syncCodeJobs,
 		NoFetch:   syncCodeNoFetch,
+		NoTags:    syncCodeNoTags,
 		Strategy:  syncCodeStrategy,
 	}
 
