@@ -39,3 +39,8 @@ dist/
 # .vscode/
 # Nightshift plan artifacts (keep out of version control)
 .nightshift-plan
+.claude
+.mcp.json
+.pi
+.opencode
+.codex
