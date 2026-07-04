@@ -17,6 +17,7 @@ cmd/                      CLI commands (Cobra)
 ├── session/              Claude Code / Codex session analysis
 ├── diffutil/             Unified diff with character highlighting
 ├── scripter/             Per-repo setup scripts
+├── editor/               External editor launcher (vim/$EDITOR) with TUI fallback
 │
 ├── config/               Global config (~/.config/repomni/config.yaml)
 ├── repoconfig/           Per-repo config (.git/repomni/config.yaml)

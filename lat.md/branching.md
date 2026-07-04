@@ -24,4 +24,4 @@ Default terminal states are `merged` and `closed` (configurable via `--state`). 
 
 ## Setup Scripts
 
-Per-repo setup scripts stored at `.git/repomni/scripts/setup.sh` run automatically after `branch create` and `branch clone`. Managed by [[internal/scripter/scripter.go]]. The `config script` command provides an interactive editor.
+Per-repo setup scripts stored at `.git/repomni/scripts/setup.sh` run automatically after `branch create` and `branch clone`. Managed by [[internal/scripter/scripter.go]]. The `config script` command edits the script in an external editor when available, falling back to an in-process TUI editor (see [[config#External Editor]]).
