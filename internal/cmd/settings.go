@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
 	"github.com/ezerfernandes/repomni/internal/config"
+	"github.com/ezerfernandes/repomni/internal/editor"
 	"github.com/ezerfernandes/repomni/internal/ui"
 	"github.com/spf13/cobra"
 )
@@ -57,9 +59,27 @@ func runSettings(cmd *cobra.Command, args []string) error {
 			cfg.SourceDir = config.ExpandPath(settingsSource)
 		}
 
-		cfg, err = ui.RunSettingsForm(cfg)
-		if err != nil {
-			return fmt.Errorf("configuration cancelled: %w", err)
+		// Prefer editing the raw YAML in an external editor (vim/$EDITOR) when
+		// one is available; fall back to the guided TUI form otherwise.
+		if editor.Available() {
+			header := "# repomni global config.\n" +
+				"#\n" +
+				"# Save with no changes (or an empty buffer) to abort without writing.\n\n"
+			cfg, err = editYAMLConfig(*cfg, header)
+			if err != nil {
+				if errors.Is(err, editor.ErrAborted) {
+					fmt.Println("No changes made; configuration left unchanged.")
+					return nil
+				}
+				// editYAMLConfig already describes the failure (e.g. a YAML
+				// syntax error); don't relabel a fixable typo as a cancellation.
+				return err
+			}
+		} else {
+			cfg, err = ui.RunSettingsForm(cfg)
+			if err != nil {
+				return fmt.Errorf("configuration cancelled: %w", err)
+			}
 		}
 	}
 
@@ -71,6 +91,16 @@ func runSettings(cmd *cobra.Command, args []string) error {
 	info, err := os.Stat(cfg.SourceDir)
 	if err != nil || !info.IsDir() {
 		return fmt.Errorf("source directory does not exist or is not a directory: %s", cfg.SourceDir)
+	}
+
+	// Validate the injection mode. The TUI form constrains this to a Select, but
+	// the raw-YAML editor path accepts free text, so a typo like `mode: symlnk`
+	// or a deleted `mode:` line would otherwise be saved and silently treated as
+	// copy mode by the injector.
+	switch cfg.Mode {
+	case config.ModeSymlink, config.ModeCopy:
+	default:
+		return fmt.Errorf("invalid injection mode %q (must be %q or %q)", cfg.Mode, config.ModeSymlink, config.ModeCopy)
 	}
 
 	if err := cfg.Save(); err != nil {
