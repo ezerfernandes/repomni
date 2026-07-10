@@ -16,6 +16,7 @@ type BranchInfo struct {
 	MergeURL    string `json:"merge_url,omitempty"`
 	Ticket      string `json:"ticket,omitempty"`
 	Description string `json:"description,omitempty"`
+	LastCommit  string `json:"last_commit,omitempty"`
 	Dirty       bool   `json:"dirty"`
 	Remote      bool   `json:"remote"`
 }
@@ -25,10 +26,14 @@ func PrintBranchesTable(infos []BranchInfo) {
 	nameW := len("Name")
 	stateW := len("State")
 	ticketW := 0
+	hasCommit := false
 	hasDiffers := false
 	hasRemote := false
 	hasTicket := false
 	for _, info := range infos {
+		if info.LastCommit != "" {
+			hasCommit = true
+		}
 		display := info.Name
 		if info.Remote {
 			display += "*"
@@ -59,18 +64,24 @@ func PrintBranchesTable(infos []BranchInfo) {
 	}
 
 	fmt.Println()
+	commitSuffix := ""
+	commitSepSuffix := ""
+	if hasCommit {
+		commitSuffix = "  Last Commit"
+		commitSepSuffix = "  " + strings.Repeat("─", 11)
+	}
 	if hasTicket {
-		hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%-%ds  %%s\n", nameW, stateW, ticketW)
-		fmt.Printf(hdrFmt, "Name", "State", "Ticket", "Dirty")
-		fmt.Printf(hdrFmt,
+		hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%-%ds  %%-5s", nameW, stateW, ticketW)
+		fmt.Printf(hdrFmt+commitSuffix+"\n", "Name", "State", "Ticket", "Dirty")
+		fmt.Printf(hdrFmt+commitSepSuffix+"\n",
 			strings.Repeat("─", nameW),
 			strings.Repeat("─", stateW),
 			strings.Repeat("─", ticketW),
 			strings.Repeat("─", 5))
 	} else {
-		hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%s\n", nameW, stateW)
-		fmt.Printf(hdrFmt, "Name", "State", "Dirty")
-		fmt.Printf(hdrFmt,
+		hdrFmt := fmt.Sprintf("  %%-%ds  %%-%ds  %%-5s", nameW, stateW)
+		fmt.Printf(hdrFmt+commitSuffix+"\n", "Name", "State", "Dirty")
+		fmt.Printf(hdrFmt+commitSepSuffix+"\n",
 			strings.Repeat("─", nameW),
 			strings.Repeat("─", stateW),
 			strings.Repeat("─", 5))
@@ -98,17 +109,22 @@ func PrintBranchesTable(infos []BranchInfo) {
 			pad = 0
 		}
 
+		commitCol := ""
+		if hasCommit {
+			commitCol = "  " + info.LastCommit
+		}
+
 		if hasTicket {
-			fmt.Printf("  %-*s  %s%s  %-*s  %s\n",
+			fmt.Printf("  %-*s  %s%s  %-*s  %-5s%s\n",
 				nameW, display,
 				stateDisplay, strings.Repeat(" ", pad),
 				ticketW, info.Ticket,
-				dirty)
+				dirty, commitCol)
 		} else {
-			fmt.Printf("  %-*s  %s%s  %s\n",
+			fmt.Printf("  %-*s  %s%s  %-5s%s\n",
 				nameW, display,
 				stateDisplay, strings.Repeat(" ", pad),
-				dirty)
+				dirty, commitCol)
 		}
 	}
 
@@ -151,6 +167,9 @@ func PrintBranchesList(infos []BranchInfo) {
 		}
 		if info.Description != "" {
 			fmt.Printf("  %s  %s\n", branchLabelStyle.Render("Description:"), info.Description)
+		}
+		if info.LastCommit != "" {
+			fmt.Printf("  %s  %s\n", branchLabelStyle.Render("Last Commit:"), info.LastCommit)
 		}
 		dirty := "no"
 		if info.Dirty {

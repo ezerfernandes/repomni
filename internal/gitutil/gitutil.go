@@ -186,6 +186,11 @@ func UpstreamRef(dir string) (string, error) {
 	return out, nil
 }
 
+// LastCommitSubject returns the subject line of the most recent commit.
+func LastCommitSubject(dir string) (string, error) {
+	return RunGit(dir, "log", "-1", "--format=%s")
+}
+
 // AheadBehind returns how many commits the current branch is ahead/behind its upstream.
 func AheadBehind(dir string) (ahead, behind int, err error) {
 	out, err := RunGit(dir, "rev-list", "--left-right", "--count", "HEAD...@{u}")
