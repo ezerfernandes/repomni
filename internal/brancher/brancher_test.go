@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/ezerfernandes/repomni/internal/gitutil"
@@ -144,7 +145,7 @@ func TestBranch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := Branch(workDir, "my-feature")
+	result, err := Branch(workDir, "my-feature", "")
 	if err != nil {
 		t.Fatalf("Branch failed: %v", err)
 	}
@@ -181,7 +182,7 @@ func TestBranch(t *testing.T) {
 }
 
 func TestBranchInvalidName(t *testing.T) {
-	_, err := Branch(".", "has space")
+	_, err := Branch(".", "has space", "")
 	if err == nil {
 		t.Error("expected error for invalid branch name")
 	}
@@ -196,7 +197,7 @@ func TestBranchDirectoryExists(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := Branch(workDir, "existing")
+	_, err := Branch(workDir, "existing", "")
 	if err == nil {
 		t.Error("expected error when directory already exists")
 	}
@@ -204,9 +205,102 @@ func TestBranchDirectoryExists(t *testing.T) {
 
 func TestBranchNoParentRepo(t *testing.T) {
 	workDir := t.TempDir()
-	_, err := Branch(workDir, "my-feature")
+	_, err := Branch(workDir, "my-feature", "")
 	if err == nil {
 		t.Error("expected error when no parent git repo exists")
+	}
+}
+
+// pushBaseBranch pushes a "develop" branch with one extra commit to origin
+// and returns that commit's SHA.
+func pushBaseBranch(t *testing.T, cloneDir string) string {
+	t.Helper()
+	run(t, cloneDir, "git", "checkout", "-b", "develop")
+	writeFile(t, filepath.Join(cloneDir, "develop.txt"), "develop work")
+	run(t, cloneDir, "git", "add", ".")
+	run(t, cloneDir, "git", "commit", "-m", "develop commit")
+	run(t, cloneDir, "git", "push", "-u", "origin", "develop")
+	sha := strings.TrimSpace(run(t, cloneDir, "git", "rev-parse", "HEAD"))
+	run(t, cloneDir, "git", "checkout", "-")
+	return sha
+}
+
+func TestBranchWithBase(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+	developSHA := pushBaseBranch(t, cloneDir)
+
+	workDir := filepath.Join(cloneDir, "workdir")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := Branch(workDir, "my-fix", "develop")
+	if err != nil {
+		t.Fatalf("Branch failed: %v", err)
+	}
+	if result.Base != "develop" {
+		t.Errorf("Base = %q, want %q", result.Base, "develop")
+	}
+
+	targetDir := filepath.Join(workDir, "my-fix")
+	branch, err := gitutil.CurrentBranch(targetDir)
+	if err != nil {
+		t.Fatalf("CurrentBranch failed: %v", err)
+	}
+	if branch != "my-fix" {
+		t.Errorf("current branch = %q, want %q", branch, "my-fix")
+	}
+	if head := strings.TrimSpace(run(t, targetDir, "git", "rev-parse", "HEAD")); head != developSHA {
+		t.Errorf("HEAD = %s, want develop tip %s", head, developSHA)
+	}
+	// The new branch must not track the base, so "git push" goes to origin/my-fix.
+	if out, err := gitutil.RunGit(targetDir, "config", "--get", "branch.my-fix.merge"); err == nil {
+		t.Errorf("branch.my-fix.merge = %q, want unset", out)
+	}
+}
+
+func TestBranchWithBaseCommit(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+	developSHA := pushBaseBranch(t, cloneDir)
+
+	workDir := filepath.Join(cloneDir, "workdir")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Branch(workDir, "my-fix", developSHA); err != nil {
+		t.Fatalf("Branch failed: %v", err)
+	}
+	head := strings.TrimSpace(run(t, filepath.Join(workDir, "my-fix"), "git", "rev-parse", "HEAD"))
+	if head != developSHA {
+		t.Errorf("HEAD = %s, want %s", head, developSHA)
+	}
+}
+
+func TestBranchWithUnknownBase(t *testing.T) {
+	_, cloneDir := initBareCloneEnv(t)
+
+	workDir := filepath.Join(cloneDir, "workdir")
+	if err := os.MkdirAll(workDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := Branch(workDir, "my-fix", "no-such-branch")
+	if err == nil {
+		t.Fatal("expected error for unknown base")
+	}
+	if !strings.Contains(err.Error(), "no-such-branch") {
+		t.Errorf("error %q should name the missing base", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(workDir, "my-fix")); !os.IsNotExist(statErr) {
+		t.Error("partially cloned directory should be removed")
+	}
+}
+
+func TestBranchBaseLeadingDash(t *testing.T) {
+	_, err := Branch(".", "my-fix", "--orphan")
+	if err == nil {
+		t.Error("expected error for base starting with '-'")
 	}
 }
 

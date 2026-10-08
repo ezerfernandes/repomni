@@ -6,7 +6,15 @@ The branch subsystem manages the lifecycle of parallel branch clones — from cr
 
 [[internal/brancher/brancher.go#Branch]] clones the parent repository (found by walking up the directory tree) into a sibling directory and creates a new local branch. On success, the command auto-injects configured files and runs the setup script.
 
+With `--base`, the new branch starts from `origin/<base>` (or `<base>` itself when it is a tag/commit) with `--no-track`, so pushes still go to `origin/<branch>`. The base is saved as `base_branch` in per-repo config; `branch submit` uses it as the default PR/MR target.
+
 [[internal/brancher/brancher.go#Clone]] does the same but checks out an existing remote branch instead of creating a new one. Directory name is derived from the branch name with slashes replaced by hyphens.
+
+### Clone from PR/MR URL
+
+`branch clone` also accepts a PR/MR URL: the source branch is resolved via `gh`/`glab`, cloned as usual, and the PR/MR is attached to the new clone like `branch attach`.
+
+[[internal/cmd/clone.go#resolveMergeBranch]] rejects URLs whose project path differs from the parent repo's origin (compared with [[internal/forge/forge.go#RepoSlugFromMergeURL]] and [[internal/forge/forge.go#RepoSlugFromRemote]]) and PRs/MRs opened from forks, whose branch is not on origin. The query is shared with attach through [[internal/cmd/branch_attach.go#queryMergeRequest]].
 
 Both operations validate branch names against git ref-format rules and filesystem constraints via [[internal/brancher/brancher.go#ValidateBranchName]]. On failure, partially cloned directories are cleaned up.
 

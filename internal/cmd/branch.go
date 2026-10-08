@@ -23,6 +23,8 @@ type branchResult struct {
 	State      string `json:"state"`
 	Remote     bool   `json:"remote"`
 	Ticket     string `json:"ticket,omitempty"`
+	Base       string `json:"base,omitempty"`
+	MergeURL   string `json:"merge_url,omitempty"`
 }
 
 var createCmd = &cobra.Command{
@@ -32,6 +34,14 @@ var createCmd = &cobra.Command{
 into the current directory using the branch name, and checks out a new branch
 with that name.
 
+By default the new branch starts from the remote's default branch. Use --base
+to start from another branch (or a tag/commit) instead:
+
+  repomni branch create my-fix --base release/1.2
+
+The base is stored in the repo config and used as the default target branch
+by "branch submit".
+
 This is useful for creating isolated working copies for feature branches.`,
 	Args: cobra.ExactArgs(1),
 	RunE: runCreate,
@@ -40,6 +50,7 @@ This is useful for creating isolated working copies for feature branches.`,
 var (
 	createNoInject bool
 	createTicket   string
+	createBase     string
 	createJSON     bool
 )
 
@@ -47,17 +58,22 @@ func init() {
 	branchCmd.AddCommand(createCmd)
 	createCmd.Flags().BoolVar(&createNoInject, "no-inject", false, "skip automatic injection into the new branch")
 	createCmd.Flags().StringVar(&createTicket, "ticket", "", "associate a ticket identifier (e.g., PROJ-123)")
+	createCmd.Flags().StringVar(&createBase, "base", "", "branch (or tag/commit) to start from instead of the default branch")
 	createCmd.Flags().BoolVar(&createJSON, "json", false, "output as JSON")
 }
 
 func runCreate(cmd *cobra.Command, args []string) error {
-	result, err := brancher.Branch(".", args[0])
+	result, err := brancher.Branch(".", args[0], createBase)
 	if err != nil {
 		return err
 	}
 	if !createJSON {
 		fmt.Printf("Cloned %s into %s\n", result.RemoteURL, result.TargetDir)
-		fmt.Printf("Checked out new branch: %s\n", result.Branch)
+		if result.Base != "" {
+			fmt.Printf("Checked out new branch: %s (from %s)\n", result.Branch, result.Base)
+		} else {
+			fmt.Printf("Checked out new branch: %s\n", result.Branch)
+		}
 	}
 
 	parentGitDir, parentGitDirErr := gitutil.FindGitDir(result.ParentRepo)
@@ -78,6 +94,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 		newCfg.State = string(repoconfig.StateActive)
 		newCfg.Remote = false
 		newCfg.Ticket = createTicket
+		newCfg.BaseBranch = createBase
 		if err := repoconfig.Save(newGitDir, newCfg); err != nil {
 			fmt.Fprintf(os.Stderr, "Warning: could not set initial state: %v\n", err)
 		}
@@ -104,6 +121,7 @@ func runCreate(cmd *cobra.Command, args []string) error {
 			State:      string(repoconfig.StateActive),
 			Remote:     false,
 			Ticket:     createTicket,
+			Base:       createBase,
 		})
 	}
 

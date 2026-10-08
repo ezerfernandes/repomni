@@ -70,7 +70,7 @@ func documentedFlags() map[string][]string {
 		"status":                 {"all", "json", "git", "no-fetch"},
 		"list":                   {"names", "json"},
 		"exec diff":              {"json", "main-dir", "name-only", "no-sync"},
-		"branch create":          {"no-inject", "ticket", "json"},
+		"branch create":          {"no-inject", "ticket", "base", "json"},
 		"branch clone":           {"no-inject", "ticket", "json"},
 		"branch list":            {"state", "json", "detailed"},
 		"branch set-state":       {"clear", "json"},
@@ -417,6 +417,7 @@ func TestContractFlagTypes(t *testing.T) {
 	stringFlags := map[string][]string{
 		"sync":          {"strategy"},
 		"sync code":     {"strategy"},
+		"branch create": {"base"},
 		"branch submit": {"base", "title", "body"},
 	}
 

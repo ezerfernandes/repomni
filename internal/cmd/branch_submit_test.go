@@ -81,7 +81,7 @@ func TestBuildCreateArgs_GitHub(t *testing.T) {
 			submitTitle = tt.title
 			submitBody = tt.body
 
-			got := buildCreateArgs(forge.PlatformGitHub)
+			got := buildCreateArgs(forge.PlatformGitHub, tt.base)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("buildCreateArgs(GitHub) = %v, want %v", got, tt.want)
 			}
@@ -142,7 +142,7 @@ func TestBuildCreateArgs_GitLab(t *testing.T) {
 			submitTitle = tt.title
 			submitBody = tt.body
 
-			got := buildCreateArgs(forge.PlatformGitLab)
+			got := buildCreateArgs(forge.PlatformGitLab, tt.base)
 			if !reflect.DeepEqual(got, tt.want) {
 				t.Errorf("buildCreateArgs(GitLab) = %v, want %v", got, tt.want)
 			}
@@ -237,5 +237,40 @@ func TestLastNonEmptyLine(t *testing.T) {
 				t.Errorf("lastNonEmptyLine(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestRunSubmit_DefaultsBaseToRecordedBase(t *testing.T) {
+	originDir, parentDir, _ := setupBranchEnv(t)
+	// Detect GitHub from the fetch URL while pushing to the local bare repo.
+	runGitCmd(t, parentDir, "remote", "set-url", "origin", "https://github.com/org/repo.git")
+	runGitCmd(t, parentDir, "remote", "set-url", "--push", "origin", originDir)
+	runGitCmd(t, parentDir, "checkout", "-b", "my-fix")
+	if err := repoconfig.Save(filepath.Join(parentDir, ".git"), &repoconfig.RepoConfig{Version: 1, BaseBranch: "develop"}); err != nil {
+		t.Fatal(err)
+	}
+	chdirForTest(t, parentDir)
+
+	origFill, origDraft, origReviewers := submitFill, submitDraft, submitReviewers
+	origBase, origTitle, origBody, origJSON := submitBase, submitTitle, submitBody, submitJSON
+	t.Cleanup(func() {
+		submitFill, submitDraft, submitReviewers = origFill, origDraft, origReviewers
+		submitBase, submitTitle, submitBody, submitJSON = origBase, origTitle, origBody, origJSON
+	})
+	submitFill, submitDraft, submitReviewers = true, false, nil
+	submitBase, submitTitle, submitBody, submitJSON = "", "", "", false
+
+	calls := stubForgeOutput(t, "https://github.com/org/repo/pull/5")
+	captureStdout(t, func() {
+		if err := runSubmit(submitCmd, nil); err != nil {
+			t.Fatalf("runSubmit: %v", err)
+		}
+	})
+
+	if got := strings.Join((*calls)[0], " "); got != "pr create --base develop --fill" {
+		t.Errorf("forge args = %q, want %q", got, "pr create --base develop --fill")
+	}
+	if cfg := mustLoadRepoConfig(t, parentDir); cfg.BaseBranch != "develop" {
+		t.Errorf("BaseBranch = %q, want %q", cfg.BaseBranch, "develop")
 	}
 }

@@ -41,7 +41,7 @@ func init() {
 	submitCmd.Flags().BoolVar(&submitFill, "fill", false, "auto-fill title and body from commits")
 	submitCmd.Flags().BoolVar(&submitDraft, "draft", false, "create as draft")
 	submitCmd.Flags().StringSliceVar(&submitReviewers, "reviewer", nil, "reviewers (comma-separated or repeated)")
-	submitCmd.Flags().StringVar(&submitBase, "base", "", "base/target branch")
+	submitCmd.Flags().StringVar(&submitBase, "base", "", "base/target branch (defaults to the base recorded by \"branch create --base\")")
 	submitCmd.Flags().StringVar(&submitTitle, "title", "", "PR/MR title")
 	submitCmd.Flags().StringVar(&submitBody, "body", "", "PR/MR body")
 	submitCmd.Flags().BoolVar(&submitJSON, "json", false, "output as JSON")
@@ -94,8 +94,14 @@ func runSubmit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("push failed: %w", err)
 	}
 
+	// Default the target to the base recorded by "branch create --base".
+	base := submitBase
+	if base == "" {
+		base = cfg.BaseBranch
+	}
+
 	// Build create args
-	createArgs := buildCreateArgs(platform)
+	createArgs := buildCreateArgs(platform, base)
 
 	out, err := forge.RunForgeDir(repoRoot, platform, createArgs...)
 	if err != nil {
@@ -111,7 +117,7 @@ func runSubmit(cmd *cobra.Command, args []string) error {
 	cfg.State = string(repoconfig.StateReview)
 	cfg.MergeURL = mergeURL
 	cfg.MergeNumber = forge.ParseMergeNumber(mergeURL)
-	cfg.BaseBranch = submitBase
+	cfg.BaseBranch = base
 	cfg.Draft = submitDraft
 
 	if err := repoconfig.Save(gitDir, cfg); err != nil {
@@ -139,17 +145,17 @@ func runSubmit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func buildCreateArgs(platform forge.Platform) []string {
+func buildCreateArgs(platform forge.Platform, base string) []string {
 	var args []string
 	if platform == forge.PlatformGitHub {
 		args = []string{"pr", "create"}
-		if submitBase != "" {
-			args = append(args, "--base", submitBase)
+		if base != "" {
+			args = append(args, "--base", base)
 		}
 	} else {
 		args = []string{"mr", "create"}
-		if submitBase != "" {
-			args = append(args, "--target-branch", submitBase)
+		if base != "" {
+			args = append(args, "--target-branch", base)
 		}
 	}
 

@@ -16,6 +16,7 @@ type Result struct {
 	RemoteURL  string
 	TargetDir  string
 	Branch     string
+	Base       string
 }
 
 // ValidateBranchName checks that name is both a valid directory name and a valid git branch name.
@@ -102,10 +103,15 @@ func SanitizeBranchName(name string) string {
 }
 
 // Branch clones the repository found in a parent directory and checks out a new branch.
-// workDir is the directory where the clone will be created.
-func Branch(workDir, branchName string) (*Result, error) {
+// workDir is the directory where the clone will be created. When base is non-empty the
+// new branch starts from origin/<base> (or from base itself if it names a tag or commit)
+// instead of the remote's default branch.
+func Branch(workDir, branchName, base string) (*Result, error) {
 	if err := ValidateBranchName(branchName); err != nil {
 		return nil, err
+	}
+	if strings.HasPrefix(base, "-") {
+		return nil, fmt.Errorf("base cannot start with '-'")
 	}
 
 	workDir, err := filepath.Abs(workDir)
@@ -132,7 +138,19 @@ func Branch(workDir, branchName string) (*Result, error) {
 		return nil, fmt.Errorf("git clone failed: %w", err)
 	}
 
-	if _, err := gitutil.RunGit(targetDir, "checkout", "-b", branchName); err != nil {
+	checkoutArgs := []string{"checkout", "-b", branchName}
+	if base != "" {
+		startPoint, err := resolveStartPoint(targetDir, base)
+		if err != nil {
+			cleanupErr := os.RemoveAll(targetDir)
+			return nil, errors.Join(err, cleanupErr)
+		}
+		// --no-track keeps the new branch from tracking the base branch, so a plain
+		// "git push" targets <branchName> on origin, as it does without --base.
+		checkoutArgs = []string{"checkout", "--no-track", "-b", branchName, startPoint}
+	}
+
+	if _, err := gitutil.RunGit(targetDir, checkoutArgs...); err != nil {
 		cleanupErr := os.RemoveAll(targetDir)
 		return nil, errors.Join(fmt.Errorf("git checkout failed: %w", err), cleanupErr)
 	}
@@ -142,7 +160,21 @@ func Branch(workDir, branchName string) (*Result, error) {
 		RemoteURL:  url,
 		TargetDir:  targetDir,
 		Branch:     branchName,
+		Base:       base,
 	}, nil
+}
+
+// resolveStartPoint maps base to a revision in a fresh clone. Remote branches take
+// priority (a fresh clone has no local branch other than the default); otherwise base
+// is used as given if it resolves to a commit (tag, SHA).
+func resolveStartPoint(repoDir, base string) (string, error) {
+	if _, err := gitutil.RunGit(repoDir, "rev-parse", "--verify", "--quiet", "refs/remotes/origin/"+base); err == nil {
+		return "origin/" + base, nil
+	}
+	if _, err := gitutil.RunGit(repoDir, "rev-parse", "--verify", "--quiet", base+"^{commit}"); err == nil {
+		return base, nil
+	}
+	return "", fmt.Errorf("base %q not found on origin", base)
 }
 
 // Clone clones the repository found in a parent directory and checks out an existing remote branch.

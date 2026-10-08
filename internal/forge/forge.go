@@ -130,6 +130,48 @@ func extractHost(remoteURL string) string {
 	return ""
 }
 
+// RepoSlugFromRemote returns the lowercase project path ("org/repo") of a git
+// remote URL in HTTPS, ssh:// or scp-like (git@host:org/repo.git) form.
+// Returns "" for local paths and unparseable URLs.
+func RepoSlugFromRemote(remoteURL string) string {
+	if parsed, err := url.Parse(remoteURL); err == nil && parsed.Host != "" {
+		return normalizeRepoSlug(parsed.Path)
+	}
+	// scp-like syntax: a colon before the first slash, as git defines it.
+	if i := strings.Index(remoteURL, ":"); i > 0 && !strings.Contains(remoteURL[:i], "/") {
+		return normalizeRepoSlug(remoteURL[i+1:])
+	}
+	return ""
+}
+
+// RepoSlugFromMergeURL returns the lowercase project path of a PR/MR URL:
+// "org/repo" for https://github.com/org/repo/pull/42 and
+// "group/sub/project" for https://gitlab.com/group/sub/project/-/merge_requests/7.
+// Returns "" if mergeURL is not a PR/MR URL.
+func RepoSlugFromMergeURL(mergeURL string) string {
+	parsed, err := url.Parse(mergeURL)
+	if err != nil {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(parsed.Path, "/"), "/")
+	for i, p := range parts {
+		if p != "pull" && p != "merge_requests" {
+			continue
+		}
+		project := parts[:i]
+		if len(project) > 0 && project[len(project)-1] == "-" {
+			project = project[:len(project)-1]
+		}
+		return normalizeRepoSlug(strings.Join(project, "/"))
+	}
+	return ""
+}
+
+func normalizeRepoSlug(path string) string {
+	path = strings.TrimSuffix(strings.Trim(path, "/"), ".git")
+	return strings.ToLower(path)
+}
+
 // ParseMergeNumber extracts the PR/MR number from a merge URL.
 // Works for both GitHub (/pull/42) and GitLab (/merge_requests/42) URLs.
 var mergeNumberRe = regexp.MustCompile(`/(?:pull|merge_requests)/(\d+)`)

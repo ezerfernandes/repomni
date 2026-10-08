@@ -154,7 +154,7 @@ repomni eject --all /path/to/my-clones
 | `list [dir]` | List git repos in a directory (for scripting) |
 | **branch** | |
 | `branch create <name>` | Clone parent repo and create a new branch |
-| `branch clone <name>` | Clone parent repo and check out an existing remote branch |
+| `branch clone <name\|pr-url>` | Clone parent repo and check out an existing remote branch (or a PR/MR's branch) |
 | `branch list [dir]` | List branch repos with their workflow states |
 | `branch set-state <state> [url]` | Set workflow state for the current branch repo |
 | `branch submit` | Create a PR/MR for the current branch |
@@ -262,22 +262,29 @@ repomni status --json
 
 Clone the parent repository and check out a new branch. Automatically injects configured files, runs the setup script, and sets state to `active`.
 
+The new branch starts from the remote's default branch unless `--base` names another branch (or a tag/commit). The base is saved in `.git/repomni/config.yaml` and becomes the default target of `branch submit`.
+
 ```sh
 repomni branch create my-feature
 repomni branch create my-feature --no-inject
+repomni branch create my-fix --base release/1.2
 ```
 
 | Flag | Description |
 |---|---|
 | `--no-inject` | Skip automatic injection into the new branch |
+| `--base` | Branch (or tag/commit) to start from instead of the default branch |
 
 ### `branch clone`
 
 Clone the parent repository and check out an existing remote branch. Directory name is derived from the branch name (e.g., `feature/my-thing` becomes `feature-my-thing`). Automatically injects configured files, runs the setup script, and sets state to `active`.
 
+Pass a PR (GitHub) or MR (GitLab) URL instead of a branch name to clone that PR/MR's source branch. The branch is looked up with `gh`/`glab`, and the PR/MR is attached to the new clone (URL, number, base branch, and state, as with `branch attach`). The PR/MR must belong to the parent repo's origin; PRs/MRs from forks are not supported.
+
 ```sh
 repomni branch clone feature/my-thing
 repomni branch clone feature/my-thing --no-inject
+repomni branch clone https://github.com/org/repo/pull/42
 ```
 
 | Flag | Description |
@@ -348,7 +355,7 @@ repomni branch submit --title "Add feature" --body "Description" --base develop
 | `--fill` | Auto-fill title and body from commits |
 | `--draft` | Create as draft |
 | `--reviewer` | Reviewers (comma-separated or repeated) |
-| `--base` | Base/target branch |
+| `--base` | Base/target branch (defaults to the base recorded by `branch create --base`) |
 | `--title` | PR/MR title |
 | `--body` | PR/MR body |
 

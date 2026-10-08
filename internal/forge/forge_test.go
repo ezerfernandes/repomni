@@ -50,6 +50,53 @@ func TestParseMergeNumber(t *testing.T) {
 	}
 }
 
+func TestRepoSlugFromRemote(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"https", "https://github.com/Org/Repo.git", "org/repo"},
+		{"https no suffix", "https://github.com/org/repo", "org/repo"},
+		{"https credentials", "https://user:token@gitlab.com/group/sub/project.git", "group/sub/project"},
+		{"ssh scheme", "ssh://git@github.com:22/org/repo.git", "org/repo"},
+		{"scp-like", "git@github.com:org/repo.git", "org/repo"},
+		{"scp-like host alias", "work-gh:org/repo.git", "org/repo"},
+		{"local path", "/tmp/origin.git", ""},
+		{"relative path with colon", "repos/a:b", ""},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RepoSlugFromRemote(tt.url); got != tt.want {
+				t.Errorf("RepoSlugFromRemote(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRepoSlugFromMergeURL(t *testing.T) {
+	tests := []struct {
+		name string
+		url  string
+		want string
+	}{
+		{"github pr", "https://github.com/Org/Repo/pull/42", "org/repo"},
+		{"github pr files tab", "https://github.com/org/repo/pull/42/files", "org/repo"},
+		{"gitlab mr", "https://gitlab.com/group/project/-/merge_requests/7", "group/project"},
+		{"gitlab subgroup", "https://gitlab.com/group/sub/project/-/merge_requests/7", "group/sub/project"},
+		{"not a pr", "https://github.com/org/repo", ""},
+		{"empty", "", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := RepoSlugFromMergeURL(tt.url); got != tt.want {
+				t.Errorf("RepoSlugFromMergeURL(%q) = %q, want %q", tt.url, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestCliName(t *testing.T) {
 	tests := []struct {
 		platform Platform
