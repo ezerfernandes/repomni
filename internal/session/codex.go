@@ -197,7 +197,7 @@ func DiscoverCodex(projectPath string, limit int) ([]SessionMeta, error) {
 	}
 
 	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].ModifiedAt.After(sessions[j].ModifiedAt)
+		return sessionNewerFirst(sessions[i], sessions[j])
 	})
 
 	if limit > 0 && len(sessions) > limit {

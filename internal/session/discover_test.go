@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // setupFakeHome creates a fake HOME with a Claude projects session directory
@@ -112,6 +113,45 @@ func TestDiscover_Success(t *testing.T) {
 		if s.ProjectPath != projectPath {
 			t.Errorf("session %s: ProjectPath = %q, want %q", s.SessionID, s.ProjectPath, projectPath)
 		}
+	}
+}
+
+// TestDiscover_DeterministicOnEqualMtime pins down the sort order when two
+// sessions share a file modification time. A mtime-only sort left this case
+// arbitrary (sort.Slice is not stable), which made TestDiscover_Success flaky.
+// The tiebreak on CreatedAt must put the session with the newer start first.
+func TestDiscover_DeterministicOnEqualMtime(t *testing.T) {
+	projectPath := "/test/project"
+	sessDir := setupFakeHome(t, projectPath)
+
+	aaa := filepath.Join(sessDir, "session-aaa.jsonl")
+	bbb := filepath.Join(sessDir, "session-bbb.jsonl")
+	writeJSONLSession(t, aaa, []map[string]interface{}{
+		{"type": "user", "timestamp": "2026-01-10T10:00:00Z", "uuid": "u1",
+			"message": map[string]interface{}{"role": "user", "content": "Older start"}},
+	})
+	writeJSONLSession(t, bbb, []map[string]interface{}{
+		{"type": "user", "timestamp": "2026-01-15T10:00:00Z", "uuid": "u2",
+			"message": map[string]interface{}{"role": "user", "content": "Newer start"}},
+	})
+
+	// Force identical modification times so the primary sort key ties.
+	sameTime := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
+	for _, p := range []string{aaa, bbb} {
+		if err := os.Chtimes(p, sameTime, sameTime); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sessions, err := Discover(projectPath)
+	if err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Fatalf("Discover() found %d sessions, want 2", len(sessions))
+	}
+	if sessions[0].FirstMessage != "Newer start" {
+		t.Errorf("with equal mtimes, sessions[0].FirstMessage = %q, want 'Newer start' (newest CreatedAt first)", sessions[0].FirstMessage)
 	}
 }
 

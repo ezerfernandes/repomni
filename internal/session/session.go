@@ -95,6 +95,21 @@ func Discover(projectPath string) ([]SessionMeta, error) {
 	return DiscoverWithLimit(projectPath, 0)
 }
 
+// sessionNewerFirst orders sessions newest first for sort.Slice. The primary key
+// is the file modification time; CreatedAt and then SessionID break ties so the
+// result is deterministic when two sessions share a modification time (e.g. they
+// were written within the same filesystem timestamp tick), which a mtime-only
+// comparison left arbitrary because sort.Slice is not stable.
+func sessionNewerFirst(a, b SessionMeta) bool {
+	if !a.ModifiedAt.Equal(b.ModifiedAt) {
+		return a.ModifiedAt.After(b.ModifiedAt)
+	}
+	if !a.CreatedAt.Equal(b.CreatedAt) {
+		return a.CreatedAt.After(b.CreatedAt)
+	}
+	return a.SessionID > b.SessionID
+}
+
 // DiscoverWithLimit is like Discover but returns at most limit sessions.
 // If limit is 0, all sessions are returned.
 func DiscoverWithLimit(projectPath string, limit int) ([]SessionMeta, error) {
@@ -135,7 +150,7 @@ func DiscoverWithLimit(projectPath string, limit int) ([]SessionMeta, error) {
 	}
 
 	sort.Slice(sessions, func(i, j int) bool {
-		return sessions[i].ModifiedAt.After(sessions[j].ModifiedAt)
+		return sessionNewerFirst(sessions[i], sessions[j])
 	})
 
 	if limit > 0 && len(sessions) > limit {
@@ -468,7 +483,7 @@ func DiscoverAll(projectPath, cliFilter string, limit int) ([]SessionMeta, error
 	}
 
 	sort.Slice(all, func(i, j int) bool {
-		return all[i].ModifiedAt.After(all[j].ModifiedAt)
+		return sessionNewerFirst(all[i], all[j])
 	})
 
 	if limit > 0 && len(all) > limit {
@@ -559,7 +574,7 @@ func SearchAll(projectPath, query, mode, cliFilter string, limit int) ([]SearchR
 
 	// Sort by newest session first.
 	sort.Slice(all, func(i, j int) bool {
-		return all[i].Meta.ModifiedAt.After(all[j].Meta.ModifiedAt)
+		return sessionNewerFirst(all[i].Meta, all[j].Meta)
 	})
 
 	if limit > 0 && len(all) > limit {
