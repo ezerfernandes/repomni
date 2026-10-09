@@ -77,14 +77,20 @@ func TestDiscover_Success(t *testing.T) {
 	sessDir := setupFakeHome(t, projectPath)
 
 	// Create two valid session files.
-	writeJSONLSession(t, filepath.Join(sessDir, "session-aaa.jsonl"), []map[string]interface{}{
+	aaa := filepath.Join(sessDir, "session-aaa.jsonl")
+	bbb := filepath.Join(sessDir, "session-bbb.jsonl")
+	writeJSONLSession(t, aaa, []map[string]interface{}{
 		{"type": "user", "timestamp": "2026-01-10T10:00:00Z", "uuid": "u1",
 			"message": map[string]interface{}{"role": "user", "content": "First session"}},
 	})
-	writeJSONLSession(t, filepath.Join(sessDir, "session-bbb.jsonl"), []map[string]interface{}{
+	writeJSONLSession(t, bbb, []map[string]interface{}{
 		{"type": "user", "timestamp": "2026-01-15T10:00:00Z", "uuid": "u2",
 			"message": map[string]interface{}{"role": "user", "content": "Second session"}},
 	})
+	// Set distinct mtimes: back-to-back writes can share one, and the order
+	// under test is by mtime, not by the fixture timestamps.
+	setMtime(t, aaa, time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC))
+	setMtime(t, bbb, time.Date(2026, 2, 2, 12, 0, 0, 0, time.UTC))
 
 	// Create an empty file (should be filtered).
 	os.WriteFile(filepath.Join(sessDir, "empty.jsonl"), nil, 0644)
@@ -116,10 +122,18 @@ func TestDiscover_Success(t *testing.T) {
 	}
 }
 
+// setMtime sets path's access and modification times to ts.
+func setMtime(t *testing.T, path string, ts time.Time) {
+	t.Helper()
+	if err := os.Chtimes(path, ts, ts); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestDiscover_DeterministicOnEqualMtime pins down the sort order when two
-// sessions share a file modification time. A mtime-only sort left this case
-// arbitrary (sort.Slice is not stable), which made TestDiscover_Success flaky.
-// The tiebreak on CreatedAt must put the session with the newer start first.
+// sessions share a file modification time, as files written in quick succession
+// often do. A mtime-only sort kept directory (name) order there, putting the
+// older session first. The tiebreak on CreatedAt must put the newer start first.
 func TestDiscover_DeterministicOnEqualMtime(t *testing.T) {
 	projectPath := "/test/project"
 	sessDir := setupFakeHome(t, projectPath)
@@ -137,11 +151,8 @@ func TestDiscover_DeterministicOnEqualMtime(t *testing.T) {
 
 	// Force identical modification times so the primary sort key ties.
 	sameTime := time.Date(2026, 2, 1, 12, 0, 0, 0, time.UTC)
-	for _, p := range []string{aaa, bbb} {
-		if err := os.Chtimes(p, sameTime, sameTime); err != nil {
-			t.Fatal(err)
-		}
-	}
+	setMtime(t, aaa, sameTime)
+	setMtime(t, bbb, sameTime)
 
 	sessions, err := Discover(projectPath)
 	if err != nil {
@@ -152,6 +163,33 @@ func TestDiscover_DeterministicOnEqualMtime(t *testing.T) {
 	}
 	if sessions[0].FirstMessage != "Newer start" {
 		t.Errorf("with equal mtimes, sessions[0].FirstMessage = %q, want 'Newer start' (newest CreatedAt first)", sessions[0].FirstMessage)
+	}
+}
+
+// TestSessionNewerFirst covers each sort key in turn, including the FilePath
+// tiebreak for sessions with equal times and no SessionID (possible for Codex
+// sessions whose filename lacks a UUID), which must still order deterministically.
+func TestSessionNewerFirst(t *testing.T) {
+	older := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	newer := older.Add(time.Second)
+	tests := []struct {
+		name string
+		a, b SessionMeta
+		want bool
+	}{
+		{"newer mtime first", SessionMeta{ModifiedAt: newer, CreatedAt: older}, SessionMeta{ModifiedAt: older, CreatedAt: newer}, true},
+		{"older mtime second", SessionMeta{ModifiedAt: older}, SessionMeta{ModifiedAt: newer}, false},
+		{"equal mtime, newer start first", SessionMeta{ModifiedAt: older, CreatedAt: newer}, SessionMeta{ModifiedAt: older, CreatedAt: older}, true},
+		{"equal times, path breaks tie", SessionMeta{FilePath: "/s/b.jsonl"}, SessionMeta{FilePath: "/s/a.jsonl"}, true},
+		{"equal times, path breaks tie reversed", SessionMeta{FilePath: "/s/a.jsonl"}, SessionMeta{FilePath: "/s/b.jsonl"}, false},
+		{"identical sessions", SessionMeta{FilePath: "/s/a.jsonl"}, SessionMeta{FilePath: "/s/a.jsonl"}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := sessionNewerFirst(tt.a, tt.b); got != tt.want {
+				t.Errorf("sessionNewerFirst() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

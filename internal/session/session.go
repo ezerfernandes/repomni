@@ -96,10 +96,11 @@ func Discover(projectPath string) ([]SessionMeta, error) {
 }
 
 // sessionNewerFirst orders sessions newest first for sort.Slice. The primary key
-// is the file modification time; CreatedAt and then SessionID break ties so the
-// result is deterministic when two sessions share a modification time (e.g. they
-// were written within the same filesystem timestamp tick), which a mtime-only
-// comparison left arbitrary because sort.Slice is not stable.
+// is the file modification time, which often ties: the kernel stamps mtimes from
+// a coarse clock, so files written in quick succession can share one. CreatedAt
+// breaks such ties, and FilePath (always set and unique, unlike SessionID, which
+// can be empty for Codex sessions) makes the order total. Every key is needed;
+// switching to sort.SliceStable would only fall back to directory read order.
 func sessionNewerFirst(a, b SessionMeta) bool {
 	if !a.ModifiedAt.Equal(b.ModifiedAt) {
 		return a.ModifiedAt.After(b.ModifiedAt)
@@ -107,7 +108,7 @@ func sessionNewerFirst(a, b SessionMeta) bool {
 	if !a.CreatedAt.Equal(b.CreatedAt) {
 		return a.CreatedAt.After(b.CreatedAt)
 	}
-	return a.SessionID > b.SessionID
+	return a.FilePath > b.FilePath
 }
 
 // DiscoverWithLimit is like Discover but returns at most limit sessions.
